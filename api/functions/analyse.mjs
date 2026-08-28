@@ -40,6 +40,7 @@ const PHOTO_METRICS = {
     composition_quality: metricItem(),
     styling_cleanliness: metricItem(),
     background_situation: metricItem(),
+    overall_impression_consistency: metricItem(),
   },
   required: [
     "first_impression",
@@ -47,9 +48,15 @@ const PHOTO_METRICS = {
     "composition_quality",
     "styling_cleanliness",
     "background_situation",
+    "overall_impression_consistency",
   ],
   additionalProperties: false,
 };
+
+// 男性会員のいいね数のおおまかな目安。アプリ内部の実データではなく、公開されている調査記事を根拠にした一般的な目安。
+const LIKES_POSITIONING_SOURCE_URL = "https://laskoi.jp/blog/post/numberoflikes-datingapp";
+const LIKES_POSITIONING_BANDS =
+  "男性の目安(20代を想定した一般的な調査データ): 〜5件=改善の余地が大きい / 6〜15件=平均的なレンジ / 16〜30件=平均より多め / 31件以上=上位10%程度の可能性";
 
 const PROFILE_INFO = {
   type: ["object", "null"],
@@ -161,6 +168,18 @@ const CHAT_SCHEMA = {
   additionalProperties: false,
 };
 
+const POSITIONING = {
+  type: ["object", "null"],
+  properties: {
+    estimate: { type: "string" },
+    basis: { type: "string" },
+    source_url: { type: "string" },
+    disclaimer: { type: "string" },
+  },
+  required: ["estimate", "basis", "source_url", "disclaimer"],
+  additionalProperties: false,
+};
+
 const PHOTO_SCHEMA = {
   type: "object",
   properties: {
@@ -183,6 +202,21 @@ const PHOTO_SCHEMA = {
         additionalProperties: false,
       },
     },
+    bio_rewrites: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          original: { type: "string" },
+          issue: { type: "string" },
+          improved: { type: "string" },
+          reason: { type: "string" },
+        },
+        required: ["original", "issue", "improved", "reason"],
+        additionalProperties: false,
+      },
+    },
+    positioning: POSITIONING,
   },
   required: [
     "headline",
@@ -192,6 +226,8 @@ const PHOTO_SCHEMA = {
     "good_points",
     "bad_points",
     "retakes",
+    "bio_rewrites",
+    "positioning",
   ],
   additionalProperties: false,
 };
@@ -230,19 +266,29 @@ const CHAT_SYSTEM = `あなたはマッチングアプリの会話を分析す�
 - 顔写真や外見から年齢・人種・体型・健康状態などを推定して reported_age や他のフィールドに書かない。画面に文字で書かれていない属性は一切推定しない。
 - 相手を貶める表現や、相手を操作・強要する助言はしない。改善対象は常に相談者自身の振る舞い。`;
 
-const PHOTO_SYSTEM = `あなたはマッチングアプリのプロフィール写真を評価するフォトディレクター。
-入力はプロフィール写真の画像。複数枚ある場合はプロフィール全体としての構成も評価する。
+const PHOTO_SYSTEM = `あなたはマッチングアプリのプロフィール写真とプロフィール文を評価するフォトディレクター兼コーチ。
+入力は評価対象の写真の画像。複数枚ある場合はプロフィール全体としての構成も評価する。加えて、相談者自身のプロフィール画面のスクリーンショットが補足として渡されることがある。
+
+読み取り方(プロフィール、渡されている場合のみ):
+- 自己紹介文をできるだけそのまま読み取る(添削の元データになるため要約しない)。
+- 画面に文字として表示されているいいね数(または「マッチ数」)があれば読み取る。表示がなければ利用しない。
+- プロフィール写真部分がスクリーンショット検知でグレーアウトしていることがあるが、想定内の見え方なので気にしない。
 
 出力方針:
 - interest_score は「その写真で右スワイプされる確率」を表す総合スコア。忖度せず辛口に採点する。
-- metrics は「第一印象」「表情」「構図・画質」「服装・清潔感」「背景・シチュエーション」の5項目固定。それぞれ根拠のあるスコアとコメントを付ける。
+- metrics は「第一印象」「表情」「構図・画質」「服装・清潔感」「背景・シチュエーション」「全体印象の一貫性」の6項目固定。それぞれ根拠のあるスコアとコメントを付ける。「全体印象の一貫性」は、複数の写真同士、また写真とプロフィール文(渡されている場合)が矛盾なく一貫した好印象を作れているかを見る。ちぐはぐさ(写真の雰囲気とプロフィール文のトーンが合っていない、写真ごとに別人のように見える など)は信頼感を下げるため低く採点する。
 - bad_points は具体的に指摘する(顔が小さい、逆光で肌が暗い、加工が強い、背景が生活感、集合写真で本人が不明 など)。
 - retakes は撮り直し・差し替えの具体的な指示。title は一言、how は撮り方(場所・時間帯・画角・服装・表情)、reason は効果。そのまま実行できるレベルまで具体化する。
+- bio_rewrites はプロフィール文が渡されている場合のみ。自己紹介文のうち、もったいない・伝わりにくい箇所を最大4件選び、原文(original)→問題点(issue)→改善文(improved)→理由(reason)の形で添削する。improved はそのままプロフィールに貼り付けられる具体的な日本語にする。プロフィール文が渡されていなければ空配列にする。
+- positioning はいいね数が読み取れた場合のみ。アプリ内部の実データは持っていないため、以下の一般的な調査データに基づく大まかな目安として estimate・basis を書き、disclaimer に「実際のアプリ内順位ではなく、公開データに基づくAIによるおおよその目安」である旨を明記し、source_url に参照元をそのまま入れる。いいね数が読み取れない場合は null にする。
+  - 参照元URL: ${LIKES_POSITIONING_SOURCE_URL}
+  - 目安: ${LIKES_POSITIONING_BANDS}
 
 制約:
 - 日本語で書く。
-- 容姿そのものを侮辱しない。変えられる要素(構図・光・服装・表情・選定)に焦点を当てる。
-- 人物の年齢・人種・健康状態などの属性を推定して評価材料にしない。`;
+- 容姿そのものを侮辱しない。変えられる要素(構図・光・服装・表情・選定・文章)に焦点を当てる。
+- 人物の年齢・人種・健康状態などの属性を推定して評価材料にしない。
+- positioning は断定しない。あくまで目安であることが伝わる書き方にする。`;
 
 const friendlyError = (err) => {
   const status = err?.status;
@@ -320,8 +366,18 @@ export default async (req) => {
   } else {
     const photoResult = buildImageBlocks(images, { max: MAX_IMAGES, label: "", required: true });
     if (photoResult.error) return json(400, { error: photoResult.error });
-    blocks.push(...photoResult.blocks);
-    instruction = `上記${images.length}枚のプロフィール写真を評価し、スキーマに従って結果を返して。`;
+    const profileResult = buildImageBlocks(profileImages, {
+      max: MAX_PROFILE_IMAGES,
+      label: "プロフィール画面",
+      required: false,
+    });
+    if (profileResult.error) return json(400, { error: profileResult.error });
+
+    blocks.push(...photoResult.blocks, ...profileResult.blocks);
+    instruction =
+      `上記${images.length}枚のプロフィール写真を評価し、` +
+      (profileImages.length > 0 ? `プロフィール画面${profileImages.length}枚も参考にしつつ、` : "") +
+      `スキーマに従って結果を返して。`;
   }
 
   blocks.push({
