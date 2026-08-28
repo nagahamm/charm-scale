@@ -16,20 +16,24 @@
 
 ## モジュール責務
 
+メインは Flutter による iOS / Android アプリ(`app/`)。Web 版は廃止し、バックエンドは API 専用エンドポイントとして残す。
+
 | 領域 | ファイル | 責務 |
 | :--- | :--- | :--- |
-| 構造 | `index.html` | セマンティックなマークアップのみ。インラインスタイル・インラインスクリプト禁止 |
-| 装飾 | `css/style.css` | 色・サイズは `:root` のカスタムプロパティで一元管理 |
-| 制御 | `js/app.js` | 画像の取り込み・縮小、ストリーム受信、DOM描画。APIキーを持たない |
-| API | `netlify/functions/analyse.mjs` | Claude API 呼び出し、入力バリデーション、プロンプトとJSONスキーマの定義。APIキーはここだけ |
+| 画面 | `app/lib/screens/` | 画面構成・状態管理・ナビゲーション |
+| 部品 | `app/lib/widgets/` | 画面から再利用される表示部品。ロジックを持たない |
+| デザイントークン | `app/lib/theme.dart` | 色・サイズを一元管理。ウィジェットにリテラル値を直書きしない |
+| モデル | `app/lib/models/analysis.dart` | API レスポンスの型定義とパース。スキーマの定義自体は持たない |
+| 通信 | `app/lib/services/` | 画像の取り込み・縮小(`image_prep.dart`)、NDJSON ストリーム受信(`analysis_api.dart`)。APIキーを持たない |
+| API | `api/functions/analyse.mjs` | Claude API 呼び出し、入力バリデーション、プロンプトとJSONスキーマの定義。APIキーはここだけ |
 
-- プロンプトとJSONスキーマは `analyse.mjs` に集約する。フロントに散らさない。
-- APIキーは環境変数 `ANTHROPIC_API_KEY` のみから読む。ブラウザに渡さない。
+- プロンプトとJSONスキーマは `analyse.mjs` に集約する。アプリ側に散らさない。
+- APIキーは環境変数 `ANTHROPIC_API_KEY` のみから読む。アプリのビルドに埋め込まない。
 
 ## Core Principles
 
-- **SOLID**: 各モジュールの責務を上表の通りに保つ。HTML(構造)/CSS(装飾)/JS(制御)/Function(API)の実装をまたいで混ぜない。
-- **KISS**: 素直に書く。動く最小の実装を選ぶ。フレームワークやビルドツールを増やさない。
+- **SOLID**: 各モジュールの責務を上表の通りに保つ。画面(UI)/部品/モデル/通信/API の実装をまたいで混ぜない。
+- **KISS**: 素直に書く。動く最小の実装を選ぶ。Flutter 標準(`StatefulWidget`/`setState`)の範囲で完結させ、状態管理ライブラリやコード生成ツールを追加しない。
 - **YAGNI**: 今必要でない設定項目・抽象化・オプションを足さない。
 - **DRY**: 同じロジック・同じ定数を二度書かない。既存の関数を再利用できるならそちらを使う。
 
@@ -84,10 +88,11 @@ git push origin v1.0.2
 
 ## 開発環境の制約
 
-- 実行環境は Node.js + Netlify Functions。ローカルは `npm install` → `npx netlify dev`(http://localhost:8888)。
+- バックエンドは Node.js + Netlify Functions。ローカルは `npm install` → `npx netlify dev`(http://localhost:8888)。
+- アプリは Flutter。ローカルは `app/` で `flutter pub get` → `flutter run --dart-define=API_BASE_URL=<バックエンドのURL>`。
 - **Claude API を実際に叩く経路は `ANTHROPIC_API_KEY` が無いと検証できない。** キーが無い環境では、動作確認できない箇所を推測で「確認済み」と書かず、キーを入れた環境での確認を促すこと。
-- キー無しでも検証できるもの: 構文チェック(`node --check`)、入力バリデーション(メソッド不正・画像0枚・非対応形式)、ストリーム配線、エラーメッセージの変換。**検証可能なものは検証してからコミットする。**
-- ブラウザでの目視確認が必要な変更(レイアウト・レスポンシブ)は、自動ブラウザテストを実行せず、確認箇所を明示して人に委ねる。
+- キー無しでも検証できるもの: 構文チェック(`node --check`)、入力バリデーション(メソッド不正・画像0枚・非対応形式)、ストリーム配線、エラーメッセージの変換、Flutter側のモデルパース(`flutter test`)、静的解析(`flutter analyze`)。**検証可能なものは検証してからコミットする。**
+- 実機・シミュレーターでの目視確認が必要な変更(レイアウト・画面遷移)は、自動テストを実行せず、確認箇所を明示して人に委ねる。
 
 ## Typography & Formatting Rules
 
