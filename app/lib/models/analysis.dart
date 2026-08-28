@@ -2,13 +2,12 @@
 /// スキーマの定義はサーバー側(analyse.mjs)に集約されているため、ここは対応する形をなぞるのみ。
 library;
 
-enum AnalysisMode { chat, photo, profile }
+enum AnalysisMode { chat, photo }
 
 extension AnalysisModeApi on AnalysisMode {
   String get apiValue => switch (this) {
         AnalysisMode.chat => "chat",
         AnalysisMode.photo => "photo",
-        AnalysisMode.profile => "profile",
       };
 }
 
@@ -146,11 +145,59 @@ class NextMove {
       );
 }
 
+class ProfileInfo {
+  final String? reportedAge;
+  final String? reportedOccupation;
+  final String? likesCount;
+  final String bioSummary;
+  final List<ProfileAttribute> attributes;
+  final List<String> tags;
+  final List<String> talkingPoints;
+  final String notes;
+
+  const ProfileInfo({
+    required this.reportedAge,
+    required this.reportedOccupation,
+    required this.likesCount,
+    required this.bioSummary,
+    required this.attributes,
+    required this.tags,
+    required this.talkingPoints,
+    required this.notes,
+  });
+
+  factory ProfileInfo.fromJson(Map<String, dynamic> json) => ProfileInfo(
+        reportedAge: json["reported_age"] as String?,
+        reportedOccupation: json["reported_occupation"] as String?,
+        likesCount: json["likes_count"] as String?,
+        bioSummary: json["bio_summary"] as String,
+        attributes: (json["attributes"] as List)
+            .map((e) => ProfileAttribute.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        tags: (json["tags"] as List).cast<String>(),
+        talkingPoints: (json["talking_points"] as List).cast<String>(),
+        notes: json["notes"] as String,
+      );
+}
+
+class ProfileAttribute {
+  final String label;
+  final String value;
+
+  const ProfileAttribute({required this.label, required this.value});
+
+  factory ProfileAttribute.fromJson(Map<String, dynamic> json) => ProfileAttribute(
+        label: json["label"] as String,
+        value: json["value"] as String,
+      );
+}
+
 class ChatResult {
   final String headline;
   final int interestScore;
   final String phase;
   final String summary;
+  final ProfileInfo? profile;
   final ChatMetrics metrics;
   final List<TimelineEntry> timeline;
   final List<String> goodPoints;
@@ -163,6 +210,7 @@ class ChatResult {
     required this.interestScore,
     required this.phase,
     required this.summary,
+    required this.profile,
     required this.metrics,
     required this.timeline,
     required this.goodPoints,
@@ -176,6 +224,9 @@ class ChatResult {
         interestScore: json["interest_score"] as int,
         phase: json["phase"] as String,
         summary: json["summary"] as String,
+        profile: json["profile"] == null
+            ? null
+            : ProfileInfo.fromJson(json["profile"] as Map<String, dynamic>),
         metrics: ChatMetrics.fromJson(json["metrics"] as Map<String, dynamic>),
         timeline: (json["timeline"] as List)
             .map((e) => TimelineEntry.fromJson(e as Map<String, dynamic>))
@@ -231,35 +282,5 @@ class PhotoResult {
         badPoints: (json["bad_points"] as List).cast<String>(),
         retakes:
             (json["retakes"] as List).map((e) => Retake.fromJson(e as Map<String, dynamic>)).toList(),
-      );
-}
-
-class ProfileResult {
-  final String headline;
-  final String summary;
-  final String? reportedAge;
-  final String? reportedOccupation;
-  final String bioSummary;
-  final List<String> talkingPoints;
-  final String notes;
-
-  const ProfileResult({
-    required this.headline,
-    required this.summary,
-    required this.reportedAge,
-    required this.reportedOccupation,
-    required this.bioSummary,
-    required this.talkingPoints,
-    required this.notes,
-  });
-
-  factory ProfileResult.fromJson(Map<String, dynamic> json) => ProfileResult(
-        headline: json["headline"] as String,
-        summary: json["summary"] as String,
-        reportedAge: json["reported_age"] as String?,
-        reportedOccupation: json["reported_occupation"] as String?,
-        bioSummary: json["bio_summary"] as String,
-        talkingPoints: (json["talking_points"] as List).cast<String>(),
-        notes: json["notes"] as String,
       );
 }

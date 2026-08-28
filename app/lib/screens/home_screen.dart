@@ -21,6 +21,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   AnalysisMode _mode = AnalysisMode.chat;
   final List<PickedImage> _images = [];
+  final List<PickedImage> _profileImages = [];
   bool _loading = false;
   String _status = "";
 
@@ -30,27 +31,26 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  String get _modeHint => switch (_mode) {
+  String get _imagesHint => switch (_mode) {
         AnalysisMode.chat => "トーク画面のスクショを時系列順に追加",
         AnalysisMode.photo => "評価したいプロフィール写真を追加",
-        AnalysisMode.profile => "相手のプロフィール画面のスクショを追加",
       };
 
-  Future<void> _addFromCamera() async {
-    if (_images.length >= maxImages) return;
+  Future<void> _addCameraTo(List<PickedImage> target) async {
+    if (target.length >= maxImages) return;
     final picked = await _imagePrep.pickFromCamera();
     if (picked == null) return;
-    setState(() => _images.add(picked));
+    setState(() => target.add(picked));
   }
 
-  Future<void> _addFromGallery() async {
-    final remaining = maxImages - _images.length;
+  Future<void> _addGalleryTo(List<PickedImage> target) async {
+    final remaining = maxImages - target.length;
     if (remaining <= 0) return;
     final picked = await _imagePrep.pickFromGallery(remainingSlots: remaining);
-    setState(() => _images.addAll(picked));
+    setState(() => target.addAll(picked));
   }
 
-  void _removeAt(int index) => setState(() => _images.removeAt(index));
+  void _removeFrom(List<PickedImage> target, int index) => setState(() => target.removeAt(index));
 
   Future<void> _submit() async {
     if (_images.isEmpty) return;
@@ -65,6 +65,7 @@ class _HomeScreenState extends State<HomeScreen> {
       await for (final event in service.stream(
         mode: _mode,
         images: _images,
+        profileImages: _mode == AnalysisMode.chat ? _profileImages : const [],
         context: _contextController.text,
       )) {
         acc.add(event);
@@ -83,7 +84,6 @@ class _HomeScreenState extends State<HomeScreen> {
       final result = switch (_mode) {
         AnalysisMode.chat => ChatResult.fromJson(json),
         AnalysisMode.photo => PhotoResult.fromJson(json),
-        AnalysisMode.profile => ProfileResult.fromJson(json),
       };
 
       if (!mounted) return;
@@ -113,7 +113,6 @@ class _HomeScreenState extends State<HomeScreen> {
               segments: const [
                 ButtonSegment(value: AnalysisMode.chat, label: Text("会話")),
                 ButtonSegment(value: AnalysisMode.photo, label: Text("写真")),
-                ButtonSegment(value: AnalysisMode.profile, label: Text("プロフィール")),
               ],
               selected: {_mode},
               onSelectionChanged: _loading
@@ -121,29 +120,27 @@ class _HomeScreenState extends State<HomeScreen> {
                   : (selection) => setState(() => _mode = selection.first),
             ),
             const SizedBox(height: AppSpacing.md),
-            Text(_modeHint, style: Theme.of(context).textTheme.bodySmall),
-            const SizedBox(height: AppSpacing.sm),
-            _ImageGrid(images: _images, onRemove: _loading ? null : _removeAt),
-            const SizedBox(height: AppSpacing.sm),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _loading || _images.length >= maxImages ? null : _addFromCamera,
-                    icon: const Icon(Icons.photo_camera_outlined),
-                    label: const Text("カメラ"),
-                  ),
-                ),
-                const SizedBox(width: AppSpacing.sm),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _loading || _images.length >= maxImages ? null : _addFromGallery,
-                    icon: const Icon(Icons.photo_library_outlined),
-                    label: const Text("ライブラリ"),
-                  ),
-                ),
-              ],
+            _ImagePickerSection(
+              title: _mode == AnalysisMode.chat ? "トーク画面" : null,
+              hint: _imagesHint,
+              images: _images,
+              loading: _loading,
+              onCamera: () => _addCameraTo(_images),
+              onGallery: () => _addGalleryTo(_images),
+              onRemove: (i) => _removeFrom(_images, i),
             ),
+            if (_mode == AnalysisMode.chat) ...[
+              const SizedBox(height: AppSpacing.lg),
+              _ImagePickerSection(
+                title: "相手のプロフィール(任意)",
+                hint: "年齢・職業・自己紹介などが見える画面を、会話と同じ人物の分だけ追加",
+                images: _profileImages,
+                loading: _loading,
+                onCamera: () => _addCameraTo(_profileImages),
+                onGallery: () => _addGalleryTo(_profileImages),
+                onRemove: (i) => _removeFrom(_profileImages, i),
+              ),
+            ],
             const SizedBox(height: AppSpacing.md),
             TextField(
               controller: _contextController,
@@ -176,6 +173,63 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _ImagePickerSection extends StatelessWidget {
+  final String? title;
+  final String hint;
+  final List<PickedImage> images;
+  final bool loading;
+  final VoidCallback onCamera;
+  final VoidCallback onGallery;
+  final void Function(int index) onRemove;
+
+  const _ImagePickerSection({
+    required this.title,
+    required this.hint,
+    required this.images,
+    required this.loading,
+    required this.onCamera,
+    required this.onGallery,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final full = images.length >= maxImages;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (title != null) ...[
+          Text(title!, style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: AppSpacing.xs),
+        ],
+        Text(hint, style: Theme.of(context).textTheme.bodySmall),
+        const SizedBox(height: AppSpacing.sm),
+        _ImageGrid(images: images, onRemove: loading ? null : onRemove),
+        const SizedBox(height: AppSpacing.sm),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: loading || full ? null : onCamera,
+                icon: const Icon(Icons.photo_camera_outlined),
+                label: const Text("カメラ"),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: loading || full ? null : onGallery,
+                icon: const Icon(Icons.photo_library_outlined),
+                label: const Text("ライブラリ"),
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

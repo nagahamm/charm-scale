@@ -12,6 +12,19 @@ void main() {
         "interest_score": 72,
         "phase": "興味あり",
         "summary": "要約",
+        "profile": {
+          "reported_age": "28歳",
+          "reported_occupation": null,
+          "likes_count": "120",
+          "bio_summary": "自己紹介の要約",
+          "attributes": [
+            {"label": "血液型", "value": "A型"},
+            {"label": "身長", "value": "160cm"},
+          ],
+          "tags": ["旅行", "カフェ巡り"],
+          "talking_points": ["話題1", "話題2"],
+          "notes": "職業の記載なし",
+        },
         "metrics": {
           "reply_speed": _metric(80),
           "volume_balance": _metric(60),
@@ -51,6 +64,41 @@ void main() {
       expect(result.timeline.last.speaker, Speaker.partner);
       expect(result.rewrites.single.improved, "改善文");
       expect(result.nextMoves, hasLength(2));
+      expect(result.profile?.reportedAge, "28歳");
+      expect(result.profile?.reportedOccupation, isNull);
+      expect(result.profile?.likesCount, "120");
+      expect(result.profile?.talkingPoints, hasLength(2));
+      expect(result.profile?.attributes.map((a) => a.label), ["血液型", "身長"]);
+      expect(result.profile?.tags, ["旅行", "カフェ巡り"]);
+    });
+
+    test("profile is null when no profile screenshots were sent", () {
+      final json = {
+        "headline": "見出し",
+        "interest_score": 40,
+        "phase": "様子見",
+        "summary": "要約",
+        "profile": null,
+        "metrics": {
+          "reply_speed": _metric(50),
+          "volume_balance": _metric(50),
+          "question_return": _metric(50),
+          "emotional_expression": _metric(50),
+          "initiative": _metric(50),
+        },
+        "timeline": [],
+        "good_points": [],
+        "bad_points": [],
+        "rewrites": [],
+        "next_moves": [
+          {"label": "軽め", "message": "メッセージ1", "aim": "狙い1"},
+          {"label": "踏み込む", "message": "メッセージ2", "aim": "狙い2"},
+        ],
+      };
+
+      final result = ChatResult.fromJson(json);
+
+      expect(result.profile, isNull);
     });
   });
 
@@ -85,26 +133,6 @@ void main() {
         "背景・シチュエーション",
       ]);
       expect(result.retakes.single.title, "屋外で");
-    });
-  });
-
-  group("ProfileResult.fromJson", () {
-    test("parses reported fields and nulls", () {
-      final json = {
-        "headline": "見出し",
-        "summary": "要約",
-        "reported_age": "28歳",
-        "reported_occupation": null,
-        "bio_summary": "自己紹介の要約",
-        "talking_points": ["話題1", "話題2"],
-        "notes": "職業の記載なし",
-      };
-
-      final result = ProfileResult.fromJson(json);
-
-      expect(result.reportedAge, "28歳");
-      expect(result.reportedOccupation, isNull);
-      expect(result.talkingPoints, hasLength(2));
     });
   });
 }

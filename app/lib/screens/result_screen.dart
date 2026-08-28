@@ -22,7 +22,6 @@ class ResultScreen extends StatelessWidget {
         child: switch (mode) {
           AnalysisMode.chat => _ChatResultView(result: result as ChatResult),
           AnalysisMode.photo => _PhotoResultView(result: result as PhotoResult),
-          AnalysisMode.profile => _ProfileResultView(result: result as ProfileResult),
         },
       ),
     );
@@ -57,6 +56,10 @@ class _ChatResultView extends StatelessWidget {
         Text(result.headline, style: textTheme.headlineSmall),
         const SizedBox(height: AppSpacing.sm),
         Text(result.summary, style: textTheme.bodyMedium),
+        if (result.profile != null) ...[
+          const _SectionTitle("相手のプロフィール"),
+          _ProfileSection(profile: result.profile!),
+        ],
         const _SectionTitle("項目別スコア"),
         MetricBarGroup(items: result.metrics.labeled),
         if (result.timeline.length >= 2) ...[
@@ -180,38 +183,77 @@ class _RetakeCard extends StatelessWidget {
   }
 }
 
-class _ProfileResultView extends StatelessWidget {
-  final ProfileResult result;
-  const _ProfileResultView({required this.result});
+class _ProfileSection extends StatelessWidget {
+  final ProfileInfo profile;
+  const _ProfileSection({required this.profile});
 
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-    return ListView(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      children: [
-        Text(result.headline, style: textTheme.headlineSmall),
-        const SizedBox(height: AppSpacing.sm),
-        Text(result.summary, style: textTheme.bodyMedium),
-        const SizedBox(height: AppSpacing.md),
-        Wrap(
-          spacing: AppSpacing.sm,
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Chip(label: Text("年齢: ${result.reportedAge ?? '不明'}")),
-            Chip(label: Text("職業: ${result.reportedOccupation ?? '不明'}")),
+            Wrap(
+              spacing: AppSpacing.sm,
+              runSpacing: AppSpacing.sm,
+              children: [
+                Chip(label: Text("年齢: ${profile.reportedAge ?? '不明'}")),
+                Chip(label: Text("職業: ${profile.reportedOccupation ?? '不明'}")),
+                if (profile.likesCount != null) Chip(label: Text("いいね: ${profile.likesCount}")),
+              ],
+            ),
+            if (profile.attributes.isNotEmpty) ...[
+              const SizedBox(height: AppSpacing.md),
+              Column(
+                children: [
+                  for (final a in profile.attributes)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SizedBox(
+                            width: 96,
+                            child: Text(a.label, style: textTheme.bodySmall),
+                          ),
+                          Expanded(child: Text(a.value, style: textTheme.bodyMedium)),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ],
+            if (profile.tags.isNotEmpty) ...[
+              const SizedBox(height: AppSpacing.md),
+              Wrap(
+                spacing: AppSpacing.xs,
+                runSpacing: AppSpacing.xs,
+                children: [
+                  for (final t in profile.tags)
+                    Chip(label: Text(t), visualDensity: VisualDensity.compact),
+                ],
+              ),
+            ],
+            const SizedBox(height: AppSpacing.md),
+            Text("自己紹介", style: textTheme.bodySmall),
+            const SizedBox(height: AppSpacing.xs),
+            Text(profile.bioSummary, style: textTheme.bodyMedium),
+            if (profile.talkingPoints.isNotEmpty) ...[
+              const SizedBox(height: AppSpacing.md),
+              Text("話題のきっかけ", style: textTheme.bodySmall),
+              const SizedBox(height: AppSpacing.xs),
+              for (final t in profile.talkingPoints) _BulletLine(t),
+            ],
+            if (profile.notes.isNotEmpty) ...[
+              const SizedBox(height: AppSpacing.md),
+              Text(profile.notes, style: textTheme.bodySmall),
+            ],
           ],
         ),
-        const _SectionTitle("自己紹介の要約"),
-        Text(result.bioSummary, style: textTheme.bodyMedium),
-        if (result.talkingPoints.isNotEmpty) ...[
-          const _SectionTitle("話題のきっかけ"),
-          for (final t in result.talkingPoints) _BulletLine(t),
-        ],
-        if (result.notes.isNotEmpty) ...[
-          const _SectionTitle("補足"),
-          Text(result.notes, style: textTheme.bodySmall),
-        ],
-      ],
+      ),
     );
   }
 }

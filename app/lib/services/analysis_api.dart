@@ -48,6 +48,7 @@ class AnalysisApiService {
   Stream<AnalysisEvent> stream({
     required AnalysisMode mode,
     required List<PickedImage> images,
+    List<PickedImage> profileImages = const [],
     String context = "",
   }) async* {
     if (_apiBase.isEmpty) {
@@ -61,6 +62,7 @@ class AnalysisApiService {
       ..body = jsonEncode({
         "mode": mode.apiValue,
         "images": images.map((i) => i.toJson()).toList(),
+        "profile_images": profileImages.map((i) => i.toJson()).toList(),
         "context": context,
       });
 
