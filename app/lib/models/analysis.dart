@@ -100,17 +100,33 @@ extension PhotoCategoryLabel on PhotoCategory {
 
 enum Speaker { self_, partner }
 
+class MessageCritique {
+  final String issue;
+  final String improved;
+  final String reason;
+
+  const MessageCritique({required this.issue, required this.improved, required this.reason});
+
+  factory MessageCritique.fromJson(Map<String, dynamic> json) => MessageCritique(
+        issue: json["issue"] as String,
+        improved: json["improved"] as String,
+        reason: json["reason"] as String,
+      );
+}
+
 class TimelineEntry {
   final Speaker speaker;
   final String excerpt;
   final int interest;
   final String note;
+  final MessageCritique? rewrite;
 
   const TimelineEntry({
     required this.speaker,
     required this.excerpt,
     required this.interest,
     required this.note,
+    required this.rewrite,
   });
 
   factory TimelineEntry.fromJson(Map<String, dynamic> json) => TimelineEntry(
@@ -118,6 +134,9 @@ class TimelineEntry {
         excerpt: json["excerpt"] as String,
         interest: json["interest"] as int,
         note: json["note"] as String,
+        rewrite: json["rewrite"] == null
+            ? null
+            : MessageCritique.fromJson(json["rewrite"] as Map<String, dynamic>),
       );
 }
 
@@ -213,7 +232,6 @@ class ChatResult {
   final List<TimelineEntry> timeline;
   final List<String> goodPoints;
   final List<String> badPoints;
-  final List<Rewrite> rewrites;
   final List<NextMove> nextMoves;
 
   const ChatResult({
@@ -226,7 +244,6 @@ class ChatResult {
     required this.timeline,
     required this.goodPoints,
     required this.badPoints,
-    required this.rewrites,
     required this.nextMoves,
   });
 
@@ -244,8 +261,6 @@ class ChatResult {
             .toList(),
         goodPoints: (json["good_points"] as List).cast<String>(),
         badPoints: (json["bad_points"] as List).cast<String>(),
-        rewrites:
-            (json["rewrites"] as List).map((e) => Rewrite.fromJson(e as Map<String, dynamic>)).toList(),
         nextMoves:
             (json["next_moves"] as List).map((e) => NextMove.fromJson(e as Map<String, dynamic>)).toList(),
       );

@@ -33,14 +33,17 @@ void main() {
           "initiative": _metric(40),
         },
         "timeline": [
-          {"speaker": "self", "excerpt": "こんにちは", "interest": 50, "note": "note1"},
-          {"speaker": "partner", "excerpt": "こんにちは!", "interest": 65, "note": "note2"},
+          {
+            "speaker": "self",
+            "excerpt": "こんにちは",
+            "interest": 50,
+            "note": "note1",
+            "rewrite": {"issue": "問題点", "improved": "改善文", "reason": "理由"},
+          },
+          {"speaker": "partner", "excerpt": "こんにちは!", "interest": 65, "note": "note2", "rewrite": null},
         ],
         "good_points": ["良い点1"],
         "bad_points": ["課題1"],
-        "rewrites": [
-          {"original": "元の文", "issue": "問題点", "improved": "改善文", "reason": "理由"},
-        ],
         "next_moves": [
           {"label": "軽め", "message": "メッセージ1", "aim": "狙い1"},
           {"label": "踏み込む", "message": "メッセージ2", "aim": "狙い2"},
@@ -61,8 +64,9 @@ void main() {
       ]);
       expect(result.timeline, hasLength(2));
       expect(result.timeline.first.speaker, Speaker.self_);
+      expect(result.timeline.first.rewrite?.improved, "改善文");
       expect(result.timeline.last.speaker, Speaker.partner);
-      expect(result.rewrites.single.improved, "改善文");
+      expect(result.timeline.last.rewrite, isNull);
       expect(result.nextMoves, hasLength(2));
       expect(result.profile?.reportedAge, "28歳");
       expect(result.profile?.reportedOccupation, isNull);
