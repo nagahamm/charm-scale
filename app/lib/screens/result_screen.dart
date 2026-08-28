@@ -153,6 +153,18 @@ class _PhotoResultView extends StatelessWidget {
           const _SectionTitle("撮り直し指示"),
           for (final r in result.retakes) _RetakeCard(retake: r),
         ],
+        if (result.bioRewrites.isNotEmpty) ...[
+          const _SectionTitle("プロフィール文の添削"),
+          for (final r in result.bioRewrites)
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+              child: RewriteCard(rewrite: r),
+            ),
+        ],
+        if (result.positioning != null) ...[
+          const _SectionTitle("いいね数の目安"),
+          _PositioningCard(positioning: result.positioning!),
+        ],
       ],
     );
   }
@@ -176,6 +188,36 @@ class _RetakeCard extends StatelessWidget {
             Text(retake.how, style: textTheme.bodyMedium),
             const SizedBox(height: AppSpacing.xs),
             Text(retake.reason, style: textTheme.bodySmall),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PositioningCard extends StatelessWidget {
+  final Positioning positioning;
+  const _PositioningCard({required this.positioning});
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(positioning.estimate, style: textTheme.titleMedium),
+            const SizedBox(height: AppSpacing.xs),
+            Text(positioning.basis, style: textTheme.bodyMedium),
+            const SizedBox(height: AppSpacing.sm),
+            Text(positioning.disclaimer, style: textTheme.bodySmall),
+            const SizedBox(height: AppSpacing.xs),
+            SelectableText(
+              positioning.sourceUrl,
+              style: textTheme.bodySmall?.copyWith(color: AppColors.primary),
+            ),
           ],
         ),
       ),

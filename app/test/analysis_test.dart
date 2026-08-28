@@ -114,12 +114,22 @@ void main() {
           "composition_quality": _metric(70),
           "styling_cleanliness": _metric(65),
           "background_situation": _metric(40),
+          "overall_impression_consistency": _metric(45),
         },
         "good_points": ["良い点"],
         "bad_points": ["課題"],
         "retakes": [
           {"title": "屋外で", "how": "自然光の下で", "reason": "肌が明るく写る"},
         ],
+        "bio_rewrites": [
+          {"original": "元の自己紹介", "issue": "問題点", "improved": "改善後の自己紹介", "reason": "理由"},
+        ],
+        "positioning": {
+          "estimate": "平均より多め",
+          "basis": "いいね数18件は男性の平均的なレンジをやや上回る",
+          "source_url": "https://laskoi.jp/blog/post/numberoflikes-datingapp",
+          "disclaimer": "実際のアプリ内順位ではなく、公開データに基づくAIによるおおよその目安です。",
+        },
       };
 
       final result = PhotoResult.fromJson(json);
@@ -131,8 +141,38 @@ void main() {
         "構図・画質",
         "服装・清潔感",
         "背景・シチュエーション",
+        "全体印象の一貫性",
       ]);
       expect(result.retakes.single.title, "屋外で");
+      expect(result.bioRewrites.single.improved, "改善後の自己紹介");
+      expect(result.positioning?.estimate, "平均より多め");
+      expect(result.positioning?.sourceUrl, "https://laskoi.jp/blog/post/numberoflikes-datingapp");
+    });
+
+    test("bio_rewrites empty and positioning null when no profile screenshot", () {
+      final json = {
+        "headline": "見出し",
+        "interest_score": 50,
+        "summary": "要約",
+        "metrics": {
+          "first_impression": _metric(50),
+          "expression": _metric(50),
+          "composition_quality": _metric(50),
+          "styling_cleanliness": _metric(50),
+          "background_situation": _metric(50),
+          "overall_impression_consistency": _metric(50),
+        },
+        "good_points": [],
+        "bad_points": [],
+        "retakes": [],
+        "bio_rewrites": [],
+        "positioning": null,
+      };
+
+      final result = PhotoResult.fromJson(json);
+
+      expect(result.bioRewrites, isEmpty);
+      expect(result.positioning, isNull);
     });
   });
 }

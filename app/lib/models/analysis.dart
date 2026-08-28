@@ -61,6 +61,7 @@ class PhotoMetrics {
   final Metric compositionQuality;
   final Metric stylingCleanliness;
   final Metric backgroundSituation;
+  final Metric overallImpressionConsistency;
 
   const PhotoMetrics({
     required this.firstImpression,
@@ -68,6 +69,7 @@ class PhotoMetrics {
     required this.compositionQuality,
     required this.stylingCleanliness,
     required this.backgroundSituation,
+    required this.overallImpressionConsistency,
   });
 
   factory PhotoMetrics.fromJson(Map<String, dynamic> json) => PhotoMetrics(
@@ -76,6 +78,8 @@ class PhotoMetrics {
         compositionQuality: Metric.fromJson(json["composition_quality"] as Map<String, dynamic>),
         stylingCleanliness: Metric.fromJson(json["styling_cleanliness"] as Map<String, dynamic>),
         backgroundSituation: Metric.fromJson(json["background_situation"] as Map<String, dynamic>),
+        overallImpressionConsistency:
+            Metric.fromJson(json["overall_impression_consistency"] as Map<String, dynamic>),
       );
 
   List<(String, Metric)> get labeled => [
@@ -84,6 +88,7 @@ class PhotoMetrics {
         ("構図・画質", compositionQuality),
         ("服装・清潔感", stylingCleanliness),
         ("背景・シチュエーション", backgroundSituation),
+        ("全体印象の一貫性", overallImpressionConsistency),
       ];
 }
 
@@ -254,6 +259,27 @@ class Retake {
       );
 }
 
+class Positioning {
+  final String estimate;
+  final String basis;
+  final String sourceUrl;
+  final String disclaimer;
+
+  const Positioning({
+    required this.estimate,
+    required this.basis,
+    required this.sourceUrl,
+    required this.disclaimer,
+  });
+
+  factory Positioning.fromJson(Map<String, dynamic> json) => Positioning(
+        estimate: json["estimate"] as String,
+        basis: json["basis"] as String,
+        sourceUrl: json["source_url"] as String,
+        disclaimer: json["disclaimer"] as String,
+      );
+}
+
 class PhotoResult {
   final String headline;
   final int interestScore;
@@ -262,6 +288,8 @@ class PhotoResult {
   final List<String> goodPoints;
   final List<String> badPoints;
   final List<Retake> retakes;
+  final List<Rewrite> bioRewrites;
+  final Positioning? positioning;
 
   const PhotoResult({
     required this.headline,
@@ -271,6 +299,8 @@ class PhotoResult {
     required this.goodPoints,
     required this.badPoints,
     required this.retakes,
+    required this.bioRewrites,
+    required this.positioning,
   });
 
   factory PhotoResult.fromJson(Map<String, dynamic> json) => PhotoResult(
@@ -282,5 +312,11 @@ class PhotoResult {
         badPoints: (json["bad_points"] as List).cast<String>(),
         retakes:
             (json["retakes"] as List).map((e) => Retake.fromJson(e as Map<String, dynamic>)).toList(),
+        bioRewrites: (json["bio_rewrites"] as List)
+            .map((e) => Rewrite.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        positioning: json["positioning"] == null
+            ? null
+            : Positioning.fromJson(json["positioning"] as Map<String, dynamic>),
       );
 }

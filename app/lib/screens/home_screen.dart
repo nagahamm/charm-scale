@@ -21,9 +21,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
   AnalysisMode _mode = AnalysisMode.chat;
   final List<PickedImage> _images = [];
-  final List<PickedImage> _profileImages = [];
+  final List<PickedImage> _partnerProfileImages = [];
+  final List<PickedImage> _selfProfileImages = [];
   bool _loading = false;
   String _status = "";
+
+  List<PickedImage> get _profileImagesForMode =>
+      _mode == AnalysisMode.chat ? _partnerProfileImages : _selfProfileImages;
 
   @override
   void dispose() {
@@ -65,7 +69,7 @@ class _HomeScreenState extends State<HomeScreen> {
       await for (final event in service.stream(
         mode: _mode,
         images: _images,
-        profileImages: _mode == AnalysisMode.chat ? _profileImages : const [],
+        profileImages: _profileImagesForMode,
         context: _contextController.text,
       )) {
         acc.add(event);
@@ -121,7 +125,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: AppSpacing.md),
             _ImagePickerSection(
-              title: _mode == AnalysisMode.chat ? "トーク画面" : null,
+              title: _mode == AnalysisMode.chat ? "トーク画面" : "評価する写真",
               hint: _imagesHint,
               images: _images,
               loading: _loading,
@@ -129,18 +133,18 @@ class _HomeScreenState extends State<HomeScreen> {
               onGallery: () => _addGalleryTo(_images),
               onRemove: (i) => _removeFrom(_images, i),
             ),
-            if (_mode == AnalysisMode.chat) ...[
-              const SizedBox(height: AppSpacing.lg),
-              _ImagePickerSection(
-                title: "相手のプロフィール(任意)",
-                hint: "年齢・職業・自己紹介などが見える画面を、会話と同じ人物の分だけ追加",
-                images: _profileImages,
-                loading: _loading,
-                onCamera: () => _addCameraTo(_profileImages),
-                onGallery: () => _addGalleryTo(_profileImages),
-                onRemove: (i) => _removeFrom(_profileImages, i),
-              ),
-            ],
+            const SizedBox(height: AppSpacing.lg),
+            _ImagePickerSection(
+              title: _mode == AnalysisMode.chat ? "相手のプロフィール(任意)" : "自分のプロフィール(任意)",
+              hint: _mode == AnalysisMode.chat
+                  ? "年齢・職業・自己紹介などが見える画面を、会話と同じ人物の分だけ追加"
+                  : "自己紹介文やいいね数が見える自分のプロフィール画面を追加",
+              images: _profileImagesForMode,
+              loading: _loading,
+              onCamera: () => _addCameraTo(_profileImagesForMode),
+              onGallery: () => _addGalleryTo(_profileImagesForMode),
+              onRemove: (i) => _removeFrom(_profileImagesForMode, i),
+            ),
             const SizedBox(height: AppSpacing.md),
             TextField(
               controller: _contextController,
