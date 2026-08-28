@@ -36,20 +36,32 @@ const PHOTO_METRICS = {
   type: "object",
   properties: {
     first_impression: metricItem(),
-    expression: metricItem(),
-    composition_quality: metricItem(),
-    styling_cleanliness: metricItem(),
-    background_situation: metricItem(),
     overall_impression_consistency: metricItem(),
   },
-  required: [
-    "first_impression",
-    "expression",
-    "composition_quality",
-    "styling_cleanliness",
-    "background_situation",
-    "overall_impression_consistency",
-  ],
+  required: ["first_impression", "overall_impression_consistency"],
+  additionalProperties: false,
+};
+
+const PHOTO_CATEGORIES = ["portrait", "lifestyle", "scenery", "food", "pet", "other"];
+
+const PHOTO_EVALUATION = {
+  type: "object",
+  properties: {
+    category: { type: "string", enum: PHOTO_CATEGORIES },
+    score: SCORE,
+    comment: { type: "string" },
+    retake: {
+      type: ["object", "null"],
+      properties: {
+        title: { type: "string" },
+        how: { type: "string" },
+        reason: { type: "string" },
+      },
+      required: ["title", "how", "reason"],
+      additionalProperties: false,
+    },
+  },
+  required: ["category", "score", "comment", "retake"],
   additionalProperties: false,
 };
 
@@ -187,21 +199,7 @@ const PHOTO_SCHEMA = {
     interest_score: SCORE,
     summary: { type: "string" },
     metrics: PHOTO_METRICS,
-    good_points: { type: "array", items: { type: "string" } },
-    bad_points: { type: "array", items: { type: "string" } },
-    retakes: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          title: { type: "string" },
-          how: { type: "string" },
-          reason: { type: "string" },
-        },
-        required: ["title", "how", "reason"],
-        additionalProperties: false,
-      },
-    },
+    photos: { type: "array", items: PHOTO_EVALUATION },
     bio_rewrites: {
       type: "array",
       items: {
@@ -223,9 +221,7 @@ const PHOTO_SCHEMA = {
     "interest_score",
     "summary",
     "metrics",
-    "good_points",
-    "bad_points",
-    "retakes",
+    "photos",
     "bio_rewrites",
     "positioning",
   ],
@@ -267,7 +263,7 @@ const CHAT_SYSTEM = `あなたはマッチングアプリの会話を分析す�
 - 相手を貶める表現や、相手を操作・強要する助言はしない。改善対象は常に相談者自身の振る舞い。`;
 
 const PHOTO_SYSTEM = `あなたはマッチングアプリのプロフィール写真とプロフィール文を評価するフォトディレクター兼コーチ。
-入力は評価対象の写真の画像。複数枚ある場合はプロフィール全体としての構成も評価する。加えて、相談者自身のプロフィール画面のスクリーンショットが補足として渡されることがある。
+入力は評価対象の写真の画像。1枚目が「メイン写真」(プロフィールの一覧やマッチング画面で最初に表示される写真)、2枚目以降が「サブ写真」。加えて、相談者自身のプロフィール画面のスクリーンショットが補足として渡されることがある。
 
 読み取り方(プロフィール、渡されている場合のみ):
 - 自己紹介文をできるだけそのまま読み取る(添削の元データになるため要約しない)。
@@ -275,10 +271,12 @@ const PHOTO_SYSTEM = `あなたはマッチングアプリのプロフィール�
 - プロフィール写真部分がスクリーンショット検知でグレーアウトしていることがあるが、想定内の見え方なので気にしない。
 
 出力方針:
-- interest_score は「その写真で右スワイプされる確率」を表す総合スコア。忖度せず辛口に採点する。
-- metrics は「第一印象」「表情」「構図・画質」「服装・清潔感」「背景・シチュエーション」「全体印象の一貫性」の6項目固定。それぞれ根拠のあるスコアとコメントを付ける。「全体印象の一貫性」は、複数の写真同士、また写真とプロフィール文(渡されている場合)が矛盾なく一貫した好印象を作れているかを見る。ちぐはぐさ(写真の雰囲気とプロフィール文のトーンが合っていない、写真ごとに別人のように見える など)は信頼感を下げるため低く採点する。
-- bad_points は具体的に指摘する(顔が小さい、逆光で肌が暗い、加工が強い、背景が生活感、集合写真で本人が不明 など)。
-- retakes は撮り直し・差し替えの具体的な指示。title は一言、how は撮り方(場所・時間帯・画角・服装・表情)、reason は効果。そのまま実行できるレベルまで具体化する。
+- interest_score は写真全体で「右スワイプされる確率」を表す総合スコア。忖度せず辛口に採点する。
+- metrics は「第一印象」「全体印象の一貫性」の2項目固定。「第一印象」は写真セット全体を見た瞬間の印象。「全体印象の一貫性」は、複数の写真同士、また写真とプロフィール文(渡されている場合)が矛盾なく一貫した好印象を作れているかを見る。ちぐはぐさ(写真の雰囲気とプロフィール文のトーンが合っていない、写真ごとに別人のように見える など)は信頼感を下げるため低く採点する。
+- photos は渡された写真と同じ枚数・同じ順序で1件ずつ返す(順序を入れ替えない)。写真ごとに:
+  - category は写真に写っているものから判定する。人物がメインに写る一般的なプロフィール写真は "portrait"、人物+行動や場所が写るものは "lifestyle"、人物が写らない風景は "scenery"、食事は "food"、ペットは "pet"、それ以外は "other"。
+  - score と comment は category に応じた基準で評価する。portrait/lifestyle は表情・構図・光・服装・清潔感など。scenery/food/pet/other は、構図やセンスの良さ、プロフィール写真としての適切さ(メニュー表や書類のスクショのような不適切なものでないか)、その人の興味関心が伝わるかを見る。1枚目(メイン写真)は特に、顔がはっきり見えるか・第一印象の良さを重視して厳しめに採点する。
+  - retake は撮り直し・差し替えが必要な場合のみ具体的な指示を入れる(title は一言、how は撮り方や差し替え案、reason は効果)。十分に良ければ null にする。
 - bio_rewrites はプロフィール文が渡されている場合のみ。自己紹介文のうち、もったいない・伝わりにくい箇所を最大4件選び、原文(original)→問題点(issue)→改善文(improved)→理由(reason)の形で添削する。improved はそのままプロフィールに貼り付けられる具体的な日本語にする。プロフィール文が渡されていなければ空配列にする。
 - positioning はいいね数が読み取れた場合のみ。アプリ内部の実データは持っていないため、以下の一般的な調査データに基づく大まかな目安として estimate・basis を書き、disclaimer に「実際のアプリ内順位ではなく、公開データに基づくAIによるおおよその目安」である旨を明記し、source_url に参照元をそのまま入れる。いいね数が読み取れない場合は null にする。
   - 参照元URL: ${LIKES_POSITIONING_SOURCE_URL}
