@@ -91,7 +91,9 @@ create index analyses_person_created_idx on analyses (person_id, created_at desc
 
 ### 4.1 アカウント
 
-- Supabase Auth のメール+パスワード(または OTP)をそのまま使う。独自の認証基盤は実装しない。
+- Supabase Auth のメール+パスワードと、標準対応の OAuth プロバイダ(Google, Apple)をそのまま使う。独自の認証基盤は実装しない。
+- iOS では、他のソーシャルログインを提供する場合 Apple の審査ガイドラインにより Sign in with Apple が実質必須のため、Google と同時に対応する。
+- **LINEログイン**: Supabase Auth に標準搭載されていない([参考](https://github.com/orgs/supabase/discussions/20178))。LINE 自体は OAuth2/OIDC に対応しているため、Supabase の [Custom OAuth/OIDC Providers](https://supabase.com/docs/guides/auth/custom-oauth-providers) 機能で個別に設定すれば対応できる。LINE Developers コンソールでのアプリ登録(本人の手作業)が前提になるため、別Issueで扱う。
 - 新規登録数の上限は、サインアップ前に `select count(*) from auth.users` を Edge Function 等で確認するか、Supabase の招待制(invite-only)機能を使う。上限値は環境変数で管理し、コードにハードコードしない。
 
 ### 4.2 人別の履歴

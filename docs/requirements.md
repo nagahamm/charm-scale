@@ -79,16 +79,23 @@ Feature: プロフィール写真の分析
 ```gherkin
 Feature: アカウント登録・ログイン
 
-  Scenario: 新規登録
+  Scenario: メールアドレスで登録する
     Given アプリを初めて起動した
-    When メールアドレスでアカウントを作成する
+    When メールアドレスとパスワードでアカウントを作成する
     Then ログイン状態になり、以後の分析結果が自分のアカウントに保存される
+
+  Scenario: Google または Apple でログインする
+    Given アプリを初めて起動した
+    When 「Googleで続ける」または「Appleで続ける」を選ぶ
+    Then パスワードを設定することなくログイン状態になる
 
   Scenario: 新規登録数の上限
     Given 運営が定めた新規登録者数の上限に達している
     When 新規登録しようとする
     Then 登録できない旨と、待機リスト等の案内が表示される(上限値は運営側の設定による)
 ```
+
+> LINEログインは要望があるが、Supabase Auth に標準搭載されていないためカスタムOIDC対応が必要。別Issueで扱う([design.md](./design.md) 4.1節)。
 
 ### 4.2 人別の履歴
 
