@@ -57,39 +57,45 @@ class ChatMetrics {
 
 class PhotoMetrics {
   final Metric firstImpression;
-  final Metric expression;
-  final Metric compositionQuality;
-  final Metric stylingCleanliness;
-  final Metric backgroundSituation;
   final Metric overallImpressionConsistency;
 
   const PhotoMetrics({
     required this.firstImpression,
-    required this.expression,
-    required this.compositionQuality,
-    required this.stylingCleanliness,
-    required this.backgroundSituation,
     required this.overallImpressionConsistency,
   });
 
   factory PhotoMetrics.fromJson(Map<String, dynamic> json) => PhotoMetrics(
         firstImpression: Metric.fromJson(json["first_impression"] as Map<String, dynamic>),
-        expression: Metric.fromJson(json["expression"] as Map<String, dynamic>),
-        compositionQuality: Metric.fromJson(json["composition_quality"] as Map<String, dynamic>),
-        stylingCleanliness: Metric.fromJson(json["styling_cleanliness"] as Map<String, dynamic>),
-        backgroundSituation: Metric.fromJson(json["background_situation"] as Map<String, dynamic>),
         overallImpressionConsistency:
             Metric.fromJson(json["overall_impression_consistency"] as Map<String, dynamic>),
       );
 
   List<(String, Metric)> get labeled => [
         ("第一印象", firstImpression),
-        ("表情", expression),
-        ("構図・画質", compositionQuality),
-        ("服装・清潔感", stylingCleanliness),
-        ("背景・シチュエーション", backgroundSituation),
         ("全体印象の一貫性", overallImpressionConsistency),
       ];
+}
+
+enum PhotoCategory { portrait, lifestyle, scenery, food, pet, other }
+
+extension PhotoCategoryLabel on PhotoCategory {
+  static PhotoCategory fromJson(String value) => switch (value) {
+        "portrait" => PhotoCategory.portrait,
+        "lifestyle" => PhotoCategory.lifestyle,
+        "scenery" => PhotoCategory.scenery,
+        "food" => PhotoCategory.food,
+        "pet" => PhotoCategory.pet,
+        _ => PhotoCategory.other,
+      };
+
+  String get label => switch (this) {
+        PhotoCategory.portrait => "人物",
+        PhotoCategory.lifestyle => "ライフスタイル",
+        PhotoCategory.scenery => "風景",
+        PhotoCategory.food => "食事",
+        PhotoCategory.pet => "ペット",
+        PhotoCategory.other => "その他",
+      };
 }
 
 enum Speaker { self_, partner }
@@ -286,14 +292,33 @@ class Positioning {
   }
 }
 
+class PhotoEvaluation {
+  final PhotoCategory category;
+  final int score;
+  final String comment;
+  final Retake? retake;
+
+  const PhotoEvaluation({
+    required this.category,
+    required this.score,
+    required this.comment,
+    required this.retake,
+  });
+
+  factory PhotoEvaluation.fromJson(Map<String, dynamic> json) => PhotoEvaluation(
+        category: PhotoCategoryLabel.fromJson(json["category"] as String),
+        score: json["score"] as int,
+        comment: json["comment"] as String,
+        retake: json["retake"] == null ? null : Retake.fromJson(json["retake"] as Map<String, dynamic>),
+      );
+}
+
 class PhotoResult {
   final String headline;
   final int interestScore;
   final String summary;
   final PhotoMetrics metrics;
-  final List<String> goodPoints;
-  final List<String> badPoints;
-  final List<Retake> retakes;
+  final List<PhotoEvaluation> photos;
   final List<Rewrite> bioRewrites;
   final Positioning? positioning;
 
@@ -302,9 +327,7 @@ class PhotoResult {
     required this.interestScore,
     required this.summary,
     required this.metrics,
-    required this.goodPoints,
-    required this.badPoints,
-    required this.retakes,
+    required this.photos,
     required this.bioRewrites,
     required this.positioning,
   });
@@ -314,10 +337,9 @@ class PhotoResult {
         interestScore: json["interest_score"] as int,
         summary: json["summary"] as String,
         metrics: PhotoMetrics.fromJson(json["metrics"] as Map<String, dynamic>),
-        goodPoints: (json["good_points"] as List).cast<String>(),
-        badPoints: (json["bad_points"] as List).cast<String>(),
-        retakes:
-            (json["retakes"] as List).map((e) => Retake.fromJson(e as Map<String, dynamic>)).toList(),
+        photos: (json["photos"] as List)
+            .map((e) => PhotoEvaluation.fromJson(e as Map<String, dynamic>))
+            .toList(),
         bioRewrites: (json["bio_rewrites"] as List)
             .map((e) => Rewrite.fromJson(e as Map<String, dynamic>))
             .toList(),

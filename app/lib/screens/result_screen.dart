@@ -1,6 +1,9 @@
+import "dart:convert";
+
 import "package:flutter/material.dart";
 
 import "../models/analysis.dart";
+import "../services/image_prep.dart";
 import "../theme.dart";
 import "../widgets/citation_chip.dart";
 import "../widgets/copy_button.dart";
@@ -12,8 +15,9 @@ import "../widgets/trend_chart.dart";
 class ResultScreen extends StatelessWidget {
   final AnalysisMode mode;
   final Object result;
+  final List<PickedImage> images;
 
-  const ResultScreen({super.key, required this.mode, required this.result});
+  const ResultScreen({super.key, required this.mode, required this.result, required this.images});
 
   @override
   Widget build(BuildContext context) {
@@ -22,7 +26,7 @@ class ResultScreen extends StatelessWidget {
       body: SafeArea(
         child: switch (mode) {
           AnalysisMode.chat => _ChatResultView(result: result as ChatResult),
-          AnalysisMode.photo => _PhotoResultView(result: result as PhotoResult),
+          AnalysisMode.photo => _PhotoResultView(result: result as PhotoResult, images: images),
         },
       ),
     );
@@ -127,7 +131,8 @@ class _NextMoveCard extends StatelessWidget {
 
 class _PhotoResultView extends StatelessWidget {
   final PhotoResult result;
-  const _PhotoResultView({required this.result});
+  final List<PickedImage> images;
+  const _PhotoResultView({required this.result, required this.images});
 
   @override
   Widget build(BuildContext context) {
@@ -142,17 +147,17 @@ class _PhotoResultView extends StatelessWidget {
         Text(result.summary, style: textTheme.bodyMedium),
         const _SectionTitle("項目別評価"),
         MetricBarGroup(items: result.metrics.labeled),
-        if (result.goodPoints.isNotEmpty) ...[
-          const _SectionTitle("良かった点"),
-          for (final p in result.goodPoints) _BulletLine(p),
-        ],
-        if (result.badPoints.isNotEmpty) ...[
-          const _SectionTitle("課題"),
-          for (final p in result.badPoints) _BulletLine(p),
-        ],
-        if (result.retakes.isNotEmpty) ...[
-          const _SectionTitle("撮り直し指示"),
-          for (final r in result.retakes) _RetakeCard(retake: r),
+        if (result.photos.isNotEmpty) ...[
+          const _SectionTitle("写真ごとの評価"),
+          for (var i = 0; i < result.photos.length; i++)
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+              child: _PhotoEvalCard(
+                isMain: i == 0,
+                image: i < images.length ? images[i] : null,
+                evaluation: result.photos[i],
+              ),
+            ),
         ],
         if (result.bioRewrites.isNotEmpty) ...[
           const _SectionTitle("プロフィール文の添削"),
@@ -167,6 +172,98 @@ class _PhotoResultView extends StatelessWidget {
           _PositioningCard(positioning: result.positioning!),
         ],
       ],
+    );
+  }
+}
+
+class _PhotoEvalCard extends StatelessWidget {
+  final bool isMain;
+  final PickedImage? image;
+  final PhotoEvaluation evaluation;
+
+  const _PhotoEvalCard({required this.isMain, required this.image, required this.evaluation});
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final color = AppColors.forScore(evaluation.score);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Stack(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(AppSpacing.sm),
+                      child: image != null
+                          ? Image.memory(
+                              const Base64Decoder().convert(image!.base64Data),
+                              width: 72,
+                              height: 72,
+                              fit: BoxFit.cover,
+                            )
+                          : Container(
+                              width: 72,
+                              height: 72,
+                              color: AppColors.border,
+                            ),
+                    ),
+                    if (isMain)
+                      Positioned(
+                        left: 4,
+                        bottom: 4,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text(
+                            "メイン",
+                            style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(width: AppSpacing.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Chip(
+                            label: Text(evaluation.category.label),
+                            visualDensity: VisualDensity.compact,
+                            padding: EdgeInsets.zero,
+                          ),
+                          const Spacer(),
+                          Text(
+                            "${evaluation.score}",
+                            style: textTheme.titleMedium?.copyWith(color: color, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: AppSpacing.xs),
+                      Text(evaluation.comment, style: textTheme.bodySmall),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            if (evaluation.retake != null) ...[
+              const SizedBox(height: AppSpacing.sm),
+              _RetakeCard(retake: evaluation.retake!),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }

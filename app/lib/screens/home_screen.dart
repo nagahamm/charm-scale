@@ -37,7 +37,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   String get _imagesHint => switch (_mode) {
         AnalysisMode.chat => "トーク画面のスクショを時系列順に追加",
-        AnalysisMode.photo => "評価したいプロフィール写真を追加",
+        AnalysisMode.photo => "1枚目がメイン写真になります。人物だけでなく、背景・食事などのサブ写真も追加できます",
       };
 
   Future<void> _addCameraTo(List<PickedImage> target) async {
@@ -92,7 +92,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (!mounted) return;
       await Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => ResultScreen(mode: _mode, result: result)),
+        MaterialPageRoute(builder: (_) => ResultScreen(mode: _mode, result: result, images: _images)),
       );
     } catch (e) {
       if (!mounted) return;
@@ -129,6 +129,7 @@ class _HomeScreenState extends State<HomeScreen> {
               hint: _imagesHint,
               images: _images,
               loading: _loading,
+              showMainBadge: _mode == AnalysisMode.photo,
               onCamera: () => _addCameraTo(_images),
               onGallery: () => _addGalleryTo(_images),
               onRemove: (i) => _removeFrom(_images, i),
@@ -186,6 +187,7 @@ class _ImagePickerSection extends StatelessWidget {
   final String hint;
   final List<PickedImage> images;
   final bool loading;
+  final bool showMainBadge;
   final VoidCallback onCamera;
   final VoidCallback onGallery;
   final void Function(int index) onRemove;
@@ -195,6 +197,7 @@ class _ImagePickerSection extends StatelessWidget {
     required this.hint,
     required this.images,
     required this.loading,
+    this.showMainBadge = false,
     required this.onCamera,
     required this.onGallery,
     required this.onRemove,
@@ -212,7 +215,7 @@ class _ImagePickerSection extends StatelessWidget {
         ],
         Text(hint, style: Theme.of(context).textTheme.bodySmall),
         const SizedBox(height: AppSpacing.sm),
-        _ImageGrid(images: images, onRemove: loading ? null : onRemove),
+        _ImageGrid(images: images, onRemove: loading ? null : onRemove, showMainBadge: showMainBadge),
         const SizedBox(height: AppSpacing.sm),
         Row(
           children: [
@@ -241,8 +244,9 @@ class _ImagePickerSection extends StatelessWidget {
 class _ImageGrid extends StatelessWidget {
   final List<PickedImage> images;
   final void Function(int index)? onRemove;
+  final bool showMainBadge;
 
-  const _ImageGrid({required this.images, required this.onRemove});
+  const _ImageGrid({required this.images, required this.onRemove, this.showMainBadge = false});
 
   @override
   Widget build(BuildContext context) {
@@ -273,6 +277,22 @@ class _ImageGrid extends StatelessWidget {
                   fit: BoxFit.cover,
                 ),
               ),
+              if (showMainBadge && i == 0)
+                Positioned(
+                  left: 4,
+                  bottom: 4,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Text(
+                      "メイン",
+                      style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
               if (onRemove != null)
                 Positioned(
                   right: -6,

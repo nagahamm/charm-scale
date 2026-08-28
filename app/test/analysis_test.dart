@@ -110,16 +110,21 @@ void main() {
         "summary": "要約",
         "metrics": {
           "first_impression": _metric(60),
-          "expression": _metric(50),
-          "composition_quality": _metric(70),
-          "styling_cleanliness": _metric(65),
-          "background_situation": _metric(40),
           "overall_impression_consistency": _metric(45),
         },
-        "good_points": ["良い点"],
-        "bad_points": ["課題"],
-        "retakes": [
-          {"title": "屋外で", "how": "自然光の下で", "reason": "肌が明るく写る"},
+        "photos": [
+          {
+            "category": "portrait",
+            "score": 62,
+            "comment": "笑顔は好印象だが写真全体がやや暗い。",
+            "retake": {"title": "屋外で", "how": "自然光の下で", "reason": "肌が明るく写る"},
+          },
+          {
+            "category": "food",
+            "score": 70,
+            "comment": "食事の写真はセンスが伝わる良い一枚。",
+            "retake": null,
+          },
         ],
         "bio_rewrites": [
           {"original": "元の自己紹介", "issue": "問題点", "improved": "改善後の自己紹介", "reason": "理由"},
@@ -137,13 +142,13 @@ void main() {
       expect(result.interestScore, 55);
       expect(result.metrics.labeled.map((e) => e.$1), [
         "第一印象",
-        "表情",
-        "構図・画質",
-        "服装・清潔感",
-        "背景・シチュエーション",
         "全体印象の一貫性",
       ]);
-      expect(result.retakes.single.title, "屋外で");
+      expect(result.photos, hasLength(2));
+      expect(result.photos.first.category, PhotoCategory.portrait);
+      expect(result.photos.first.retake?.title, "屋外で");
+      expect(result.photos.last.category, PhotoCategory.food);
+      expect(result.photos.last.retake, isNull);
       expect(result.bioRewrites.single.improved, "改善後の自己紹介");
       expect(result.positioning?.estimate, "平均より多め");
       expect(result.positioning?.sourceUrl, "https://laskoi.jp/blog/post/numberoflikes-datingapp");
@@ -156,21 +161,16 @@ void main() {
         "summary": "要約",
         "metrics": {
           "first_impression": _metric(50),
-          "expression": _metric(50),
-          "composition_quality": _metric(50),
-          "styling_cleanliness": _metric(50),
-          "background_situation": _metric(50),
           "overall_impression_consistency": _metric(50),
         },
-        "good_points": [],
-        "bad_points": [],
-        "retakes": [],
+        "photos": [],
         "bio_rewrites": [],
         "positioning": null,
       };
 
       final result = PhotoResult.fromJson(json);
 
+      expect(result.photos, isEmpty);
       expect(result.bioRewrites, isEmpty);
       expect(result.positioning, isNull);
     });
