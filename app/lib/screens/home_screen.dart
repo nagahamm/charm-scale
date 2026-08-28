@@ -4,6 +4,7 @@ import "package:flutter/material.dart";
 
 import "../models/analysis.dart";
 import "../services/analysis_api.dart";
+import "../services/auth_service.dart";
 import "../services/image_prep.dart";
 import "../theme.dart";
 import "result_screen.dart";
@@ -108,7 +109,17 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("振り返り")),
+      appBar: AppBar(
+        title: const Text("振り返り"),
+        actions: [
+          if (isSupabaseConfigured)
+            IconButton(
+              icon: const Icon(Icons.logout),
+              tooltip: "ログアウト",
+              onPressed: _loading ? null : AuthService().signOut,
+            ),
+        ],
+      ),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(AppSpacing.md),

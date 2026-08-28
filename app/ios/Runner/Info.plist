@@ -30,6 +30,15 @@
 	<string>プロフィール写真やトーク画面のスクリーンショットを撮影するために使用します。</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>ライブラリからスクリーンショットやプロフィール写真を選択するために使用します。</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>io.charmscale.app</string>
+			</array>
+		</dict>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
