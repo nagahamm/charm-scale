@@ -4,8 +4,9 @@ const MODEL = "claude-opus-5";
 const MAX_IMAGES = 8;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const ALLOWED_MEDIA_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
-const MODES = ["chat", "photo"];
+const MODES = ["chat", "photo", "draft_check"];
 const MAX_PROFILE_IMAGES = 8;
+const MAX_DRAFT_MESSAGE_LENGTH = 500;
 
 const SCORE = { type: "integer", minimum: 0, maximum: 100 };
 
@@ -223,6 +224,25 @@ const PHOTO_SCHEMA = {
   additionalProperties: false,
 };
 
+const DRAFT_CHECK_SCHEMA = {
+  type: "object",
+  properties: {
+    candidates: { type: "array", items: { type: "string" }, minItems: 2, maxItems: 3 },
+    reaction: {
+      type: "object",
+      properties: {
+        estimate: { type: "string" },
+        reasoning: { type: "string" },
+      },
+      required: ["estimate", "reasoning"],
+      additionalProperties: false,
+    },
+    predicted_reply: { type: "string" },
+  },
+  required: ["candidates", "reaction", "predicted_reply"],
+  additionalProperties: false,
+};
+
 const CHAT_SYSTEM = `あなたはマッチングアプリの会話を分析する恋愛コミュニケーションのコーチ。
 入力はマッチングアプリのトーク画面のスクリーンショット。加えて、相手のプロフィール画面のスクリーンショットが補足として渡されることがある。
 
@@ -288,6 +308,20 @@ const PHOTO_SYSTEM = `あなたはマッチングアプリのプロフィール�
 - 人物の年齢・人種・健康状態などの属性を推定して評価材料にしない。
 - positioning は断定しない。あくまで目安であることが伝わる書き方にする。`;
 
+const DRAFT_CHECK_SYSTEM = `あなたはマッチングアプリの会話コーチ。
+入力はこれまでの会話のスクリーンショットと、相談者がこれから送ろうとしている下書きの文(draft_message)。
+
+出力方針:
+- candidates は draft_message の別の言い方の候補を2〜3件。トーンや切り口を変える(似た言い回しの言い換えに留めない)。そのまま送れる自然な日本語にする。
+- reaction は draft_message を送った場合に相手がどう反応しそうかの読み。estimate は「前向きな返信が期待できそう」のような短い定性的な表現。reasoning はそう考える根拠(これまでの会話のテンポ・話題への反応など)を1〜2文で。
+- predicted_reply は、相手から返ってきそうな返信の一例。実際の発言ではなくAIによる推測である前提で、自然な1文を書く。
+
+制約:
+- 日本語で書く。
+- reaction・predicted_reply は推測であることが伝わる書き方にする。「必ず」「絶対に」のような断定はしない。
+- 数値的な確率(例: 「80%の確率で」)は一切出さない。単一の推論に対して精度を保証できる数値ではないため。
+- 相手を操作・強要するための文面は提案しない。`;
+
 const friendlyError = (err) => {
   const status = err?.status;
   if (status === 401 || status === 403) return "APIキーの設定を確認してください。";
@@ -297,8 +331,8 @@ const friendlyError = (err) => {
   return "解析に失敗しました。画像を減らすか、時間をおいて再試行してください。";
 };
 
-const SYSTEM_BY_MODE = { chat: CHAT_SYSTEM, photo: PHOTO_SYSTEM };
-const SCHEMA_BY_MODE = { chat: CHAT_SCHEMA, photo: PHOTO_SCHEMA };
+const SYSTEM_BY_MODE = { chat: CHAT_SYSTEM, photo: PHOTO_SYSTEM, draft_check: DRAFT_CHECK_SYSTEM };
+const SCHEMA_BY_MODE = { chat: CHAT_SCHEMA, photo: PHOTO_SCHEMA, draft_check: DRAFT_CHECK_SCHEMA };
 
 const json = (status, body) =>
   new Response(JSON.stringify(body), {
@@ -323,6 +357,7 @@ export default async (req) => {
   const images = Array.isArray(payload?.images) ? payload.images : [];
   const profileImages = Array.isArray(payload?.profile_images) ? payload.profile_images : [];
   const context = typeof payload?.context === "string" ? payload.context.slice(0, 2000) : "";
+  const draftMessage = typeof payload?.draft_message === "string" ? payload.draft_message.trim() : "";
 
   const buildImageBlocks = (imgs, { max, label, required }) => {
     if (imgs.length === 0 && required) return { error: `${label}の画像が1枚もありません。` };
@@ -361,7 +396,7 @@ export default async (req) => {
       `上記${images.length}枚の会話スクリーンショットを時系列順の会話として読み、` +
       (profileImages.length > 0 ? `プロフィール${profileImages.length}枚も参考にしつつ、` : "") +
       `スキーマに従って分析結果を返して。`;
-  } else {
+  } else if (mode === "photo") {
     const photoResult = buildImageBlocks(images, { max: MAX_IMAGES, label: "", required: true });
     if (photoResult.error) return json(400, { error: photoResult.error });
     const profileResult = buildImageBlocks(profileImages, {
@@ -376,6 +411,17 @@ export default async (req) => {
       `上記${images.length}枚のプロフィール写真を評価し、` +
       (profileImages.length > 0 ? `プロフィール画面${profileImages.length}枚も参考にしつつ、` : "") +
       `スキーマに従って結果を返して。`;
+  } else {
+    if (draftMessage.length === 0) return json(400, { error: "チェックする文が空です。" });
+    if (draftMessage.length > MAX_DRAFT_MESSAGE_LENGTH) {
+      return json(400, { error: `チェックする文は${MAX_DRAFT_MESSAGE_LENGTH}文字以内にしてください。` });
+    }
+    const chatResult = buildImageBlocks(images, { max: MAX_IMAGES, label: "会話スクリーンショット", required: true });
+    if (chatResult.error) return json(400, { error: chatResult.error });
+
+    blocks.push(...chatResult.blocks);
+    instruction =
+      `上記${images.length}枚の会話スクリーンショットを踏まえて、これから送ろうとしている次の下書きをチェックして、スキーマに従って結果を返して。\n\n下書き:\n${draftMessage}`;
   }
 
   blocks.push({
