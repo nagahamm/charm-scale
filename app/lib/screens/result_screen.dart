@@ -2,6 +2,7 @@ import "package:flutter/material.dart";
 
 import "../models/analysis.dart";
 import "../theme.dart";
+import "../widgets/citation_chip.dart";
 import "../widgets/copy_button.dart";
 import "../widgets/metric_bar.dart";
 import "../widgets/rewrite_card.dart";
@@ -210,14 +211,20 @@ class _PositioningCard extends StatelessWidget {
           children: [
             Text(positioning.estimate, style: textTheme.titleMedium),
             const SizedBox(height: AppSpacing.xs),
-            Text(positioning.basis, style: textTheme.bodyMedium),
+            Text.rich(
+              TextSpan(
+                style: textTheme.bodyMedium,
+                children: [
+                  TextSpan(text: "${positioning.basis} "),
+                  WidgetSpan(
+                    alignment: PlaceholderAlignment.middle,
+                    child: CitationChip(label: positioning.sourceLabel),
+                  ),
+                ],
+              ),
+            ),
             const SizedBox(height: AppSpacing.sm),
             Text(positioning.disclaimer, style: textTheme.bodySmall),
-            const SizedBox(height: AppSpacing.xs),
-            SelectableText(
-              positioning.sourceUrl,
-              style: textTheme.bodySmall?.copyWith(color: AppColors.primary),
-            ),
           ],
         ),
       ),

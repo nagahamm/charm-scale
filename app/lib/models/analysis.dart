@@ -278,6 +278,12 @@ class Positioning {
         sourceUrl: json["source_url"] as String,
         disclaimer: json["disclaimer"] as String,
       );
+
+  /// 出典表示用の簡略ラベル(例: "laskoi.jp")。
+  String get sourceLabel {
+    final host = Uri.tryParse(sourceUrl)?.host ?? sourceUrl;
+    return host.startsWith("www.") ? host.substring(4) : host;
+  }
 }
 
 class PhotoResult {
