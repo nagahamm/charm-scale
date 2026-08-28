@@ -182,4 +182,23 @@ void main() {
       expect(result.positioning, isNull);
     });
   });
+
+  group("DraftCheckResult.fromJson", () {
+    test("parses candidates, reaction, and predicted reply", () {
+      final json = {
+        "candidates": ["候補1", "候補2"],
+        "reaction": {
+          "estimate": "前向きな返信が期待できそう",
+          "reasoning": "直近のやり取りのテンポが良いため。",
+        },
+        "predicted_reply": "いいですね、土曜なら空いてます!",
+      };
+
+      final result = DraftCheckResult.fromJson(json);
+
+      expect(result.candidates, hasLength(2));
+      expect(result.reaction.estimate, "前向きな返信が期待できそう");
+      expect(result.predictedReply, "いいですね、土曜なら空いてます!");
+    });
+  });
 }

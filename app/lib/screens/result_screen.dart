@@ -25,7 +25,7 @@ class ResultScreen extends StatelessWidget {
       appBar: AppBar(title: const Text("分析結果")),
       body: SafeArea(
         child: switch (mode) {
-          AnalysisMode.chat => _ChatResultView(result: result as ChatResult),
+          AnalysisMode.chat => _ChatResultView(result: result as ChatResult, images: images),
           AnalysisMode.photo => _PhotoResultView(result: result as PhotoResult, images: images),
         },
       ),
@@ -46,7 +46,8 @@ class _SectionTitle extends StatelessWidget {
 
 class _ChatResultView extends StatelessWidget {
   final ChatResult result;
-  const _ChatResultView({required this.result});
+  final List<PickedImage> images;
+  const _ChatResultView({required this.result, required this.images});
 
   @override
   Widget build(BuildContext context) {
@@ -59,7 +60,7 @@ class _ChatResultView extends StatelessWidget {
             title: "会話を見る",
             subtitle: "吹き出し形式で再現・返信案をチェック",
             onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => ChatThreadScreen(result: result)),
+              MaterialPageRoute(builder: (_) => ChatThreadScreen(result: result, images: images)),
             ),
           ),
           const SizedBox(height: AppSpacing.md),

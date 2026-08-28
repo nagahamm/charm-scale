@@ -363,3 +363,33 @@ class PhotoResult {
             : Positioning.fromJson(json["positioning"] as Map<String, dynamic>),
       );
 }
+
+class DraftReaction {
+  final String estimate;
+  final String reasoning;
+
+  const DraftReaction({required this.estimate, required this.reasoning});
+
+  factory DraftReaction.fromJson(Map<String, dynamic> json) => DraftReaction(
+        estimate: json["estimate"] as String,
+        reasoning: json["reasoning"] as String,
+      );
+}
+
+class DraftCheckResult {
+  final List<String> candidates;
+  final DraftReaction reaction;
+  final String predictedReply;
+
+  const DraftCheckResult({
+    required this.candidates,
+    required this.reaction,
+    required this.predictedReply,
+  });
+
+  factory DraftCheckResult.fromJson(Map<String, dynamic> json) => DraftCheckResult(
+        candidates: (json["candidates"] as List).cast<String>(),
+        reaction: DraftReaction.fromJson(json["reaction"] as Map<String, dynamic>),
+        predictedReply: json["predicted_reply"] as String,
+      );
+}

@@ -50,7 +50,23 @@ class AnalysisApiService {
     required List<PickedImage> images,
     List<PickedImage> profileImages = const [],
     String context = "",
-  }) async* {
+  }) => _stream({
+        "mode": mode.apiValue,
+        "images": images.map((i) => i.toJson()).toList(),
+        "profile_images": profileImages.map((i) => i.toJson()).toList(),
+        "context": context,
+      });
+
+  Stream<AnalysisEvent> streamDraftCheck({
+    required List<PickedImage> images,
+    required String draftMessage,
+  }) => _stream({
+        "mode": "draft_check",
+        "images": images.map((i) => i.toJson()).toList(),
+        "draft_message": draftMessage,
+      });
+
+  Stream<AnalysisEvent> _stream(Map<String, Object?> body) async* {
     if (_apiBase.isEmpty) {
       throw const AnalysisApiException(
         "API_BASE_URL が未設定です。--dart-define=API_BASE_URL=... を指定してビルドしてください。",
@@ -59,12 +75,7 @@ class AnalysisApiService {
 
     final request = http.Request("POST", Uri.parse("$_apiBase/api/analyse"))
       ..headers["content-type"] = "application/json; charset=utf-8"
-      ..body = jsonEncode({
-        "mode": mode.apiValue,
-        "images": images.map((i) => i.toJson()).toList(),
-        "profile_images": profileImages.map((i) => i.toJson()).toList(),
-        "context": context,
-      });
+      ..body = jsonEncode(body);
 
     final response = await _client.send(request);
 
