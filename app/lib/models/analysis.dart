@@ -102,14 +102,14 @@ enum Speaker { self_, partner }
 
 class MessageCritique {
   final String issue;
-  final String improved;
+  final List<String> improved;
   final String reason;
 
   const MessageCritique({required this.issue, required this.improved, required this.reason});
 
   factory MessageCritique.fromJson(Map<String, dynamic> json) => MessageCritique(
         issue: json["issue"] as String,
-        improved: json["improved"] as String,
+        improved: (json["improved"] as List).cast<String>(),
         reason: json["reason"] as String,
       );
 }

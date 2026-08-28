@@ -38,7 +38,11 @@ void main() {
             "excerpt": "こんにちは",
             "interest": 50,
             "note": "note1",
-            "rewrite": {"issue": "問題点", "improved": "改善文", "reason": "理由"},
+            "rewrite": {
+              "issue": "問題点",
+              "improved": ["改善文A", "改善文B"],
+              "reason": "理由",
+            },
           },
           {"speaker": "partner", "excerpt": "こんにちは!", "interest": 65, "note": "note2", "rewrite": null},
         ],
@@ -64,7 +68,7 @@ void main() {
       ]);
       expect(result.timeline, hasLength(2));
       expect(result.timeline.first.speaker, Speaker.self_);
-      expect(result.timeline.first.rewrite?.improved, "改善文");
+      expect(result.timeline.first.rewrite?.improved, ["改善文A", "改善文B"]);
       expect(result.timeline.last.speaker, Speaker.partner);
       expect(result.timeline.last.rewrite, isNull);
       expect(result.nextMoves, hasLength(2));
@@ -93,7 +97,6 @@ void main() {
         "timeline": [],
         "good_points": [],
         "bad_points": [],
-        "rewrites": [],
         "next_moves": [
           {"label": "軽め", "message": "メッセージ1", "aim": "狙い1"},
           {"label": "踏み込む", "message": "メッセージ2", "aim": "狙い2"},

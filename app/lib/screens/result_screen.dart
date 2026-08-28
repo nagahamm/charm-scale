@@ -6,11 +6,11 @@ import "../models/analysis.dart";
 import "../services/image_prep.dart";
 import "../theme.dart";
 import "../widgets/citation_chip.dart";
-import "../widgets/copy_button.dart";
 import "../widgets/metric_bar.dart";
 import "../widgets/rewrite_card.dart";
 import "../widgets/score_gauge.dart";
 import "../widgets/trend_chart.dart";
+import "chat_thread_screen.dart";
 
 class ResultScreen extends StatelessWidget {
   final AnalysisMode mode;
@@ -54,6 +54,16 @@ class _ChatResultView extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(AppSpacing.md),
       children: [
+        if (result.timeline.isNotEmpty) ...[
+          _NavLinkCard(
+            title: "会話を見る",
+            subtitle: "吹き出し形式で再現・返信案をチェック",
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => ChatThreadScreen(result: result)),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+        ],
         Center(child: ScoreGauge(score: result.interestScore, label: "食いつき度数")),
         const SizedBox(height: AppSpacing.sm),
         Center(child: Chip(label: Text(result.phase))),
@@ -79,199 +89,43 @@ class _ChatResultView extends StatelessWidget {
           const _SectionTitle("課題"),
           for (final p in result.badPoints) _BulletLine(p),
         ],
-        if (result.timeline.isNotEmpty) ...[
-          const _SectionTitle("会話の再現"),
-          const Padding(
-            padding: EdgeInsets.only(bottom: AppSpacing.sm),
-            child: Text(
-              "添削マーク付きの吹き出しをタップすると、もっとこうすべきだった添削が見られます",
-              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-            ),
-          ),
-          _ChatBubbleTimeline(timeline: result.timeline),
-        ],
-        if (result.nextMoves.isNotEmpty) ...[
-          const _SectionTitle("次に送る返信案"),
-          for (final m in result.nextMoves) _NextMoveCard(move: m),
-        ],
       ],
     );
   }
 }
 
-class _NextMoveCard extends StatelessWidget {
-  final NextMove move;
-  const _NextMoveCard({required this.move});
+class _NavLinkCard extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+  const _NavLinkCard({required this.title, required this.subtitle, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Chip(label: Text(move.label), visualDensity: VisualDensity.compact),
-            const SizedBox(height: AppSpacing.sm),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Text(move.message, style: textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
-                ),
-                CopyButton(text: move.message),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.xs),
-            Text(move.aim, style: textTheme.bodySmall),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ChatBubbleTimeline extends StatelessWidget {
-  final List<TimelineEntry> timeline;
-  const _ChatBubbleTimeline({required this.timeline});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        for (final entry in timeline) _MessageBubble(entry: entry),
-      ],
-    );
-  }
-}
-
-class _MessageBubble extends StatelessWidget {
-  final TimelineEntry entry;
-  const _MessageBubble({required this.entry});
-
-  @override
-  Widget build(BuildContext context) {
-    final isSelf = entry.speaker == Speaker.self_;
-    final hasRewrite = entry.rewrite != null;
-    final bubble = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: isSelf ? AppColors.primary : AppColors.surface,
-        border: isSelf ? null : Border.all(color: AppColors.border),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            entry.excerpt,
-            style: TextStyle(
-              color: isSelf ? Colors.white : AppColors.textPrimary,
-              fontSize: 14,
-              height: 1.4,
-            ),
-          ),
-          if (hasRewrite) ...[
-            const SizedBox(height: 6),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.edit_note, size: 14, color: isSelf ? Colors.white : AppColors.primary),
-                const SizedBox(width: 3),
-                Text(
-                  "もっとこうすべきだった",
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: isSelf ? Colors.white : AppColors.primary,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ],
-      ),
-    );
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        mainAxisAlignment: isSelf ? MainAxisAlignment.end : MainAxisAlignment.start,
-        children: [
-          Flexible(
-            child: hasRewrite
-                ? InkWell(
-                    borderRadius: BorderRadius.circular(16),
-                    onTap: () => _showRewriteSheet(context, entry),
-                    child: bubble,
-                  )
-                : bubble,
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showRewriteSheet(BuildContext context, TimelineEntry entry) {
-    final rewrite = entry.rewrite!;
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(AppSpacing.radius)),
-      ),
-      builder: (context) {
-        final textTheme = Theme.of(context).textTheme;
-        return FractionallySizedBox(
-          heightFactor: 0.85,
-          child: Padding(
-            padding: const EdgeInsets.all(AppSpacing.md),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 36,
-                    height: 4,
-                    margin: const EdgeInsets.only(bottom: AppSpacing.md),
-                    decoration: BoxDecoration(
-                      color: AppColors.border,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                Text("送った文", style: textTheme.bodySmall),
-                const SizedBox(height: AppSpacing.xs),
-                Text(entry.excerpt, style: textTheme.bodyMedium?.copyWith(color: AppColors.textSecondary)),
-                const SizedBox(height: AppSpacing.md),
-                Text("問題点", style: textTheme.bodySmall),
-                const SizedBox(height: AppSpacing.xs),
-                Text(rewrite.issue, style: textTheme.bodyMedium),
-                const SizedBox(height: AppSpacing.md),
-                Text("改善文", style: textTheme.bodySmall),
-                Row(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppSpacing.radius),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.md),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: Text(
-                        rewrite.improved,
-                        style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-                      ),
-                    ),
-                    CopyButton(text: rewrite.improved),
+                    Text(title, style: textTheme.titleMedium),
+                    const SizedBox(height: 2),
+                    Text(subtitle, style: textTheme.bodySmall),
                   ],
                 ),
-                const SizedBox(height: AppSpacing.md),
-                Text("理由", style: textTheme.bodySmall),
-                const SizedBox(height: AppSpacing.xs),
-                Text(rewrite.reason, style: textTheme.bodyMedium),
-              ],
-            ),
+              ),
+              const Icon(Icons.chevron_right, color: AppColors.textSecondary),
+            ],
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 }
