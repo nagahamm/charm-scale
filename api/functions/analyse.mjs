@@ -131,7 +131,7 @@ const CHAT_SCHEMA = {
             type: ["object", "null"],
             properties: {
               issue: { type: "string" },
-              improved: { type: "string" },
+              improved: { type: "array", items: { type: "string" }, minItems: 2, maxItems: 3 },
               reason: { type: "string" },
             },
             required: ["issue", "improved", "reason"],
@@ -252,7 +252,7 @@ const CHAT_SYSTEM = `あなたはマッチングアプリの会話を分析す�
   - 感情表現: ゴットマンの「つながりの申し出(bids for connection)」理論。相槌・絵文字・感嘆符などの情緒的反応は、相手からの申し出にどれだけ応えているかを表す。
   - 主導権: 同理論における「相手に向き合う(turning toward)」応答パターン。話題の提案・誘いなど、関係を前に進める行動を自ら取っているかを見る。
 - timeline は主要なやりとりを時系列で最大12件。excerpt はスクショから読み取った実際の文言を短く引用する。interest はその時点での相手の食いつき度数。アプリ上で実際にやりとりされた吹き出しをそのまま再現できるようにするデータなので、順序と話者の左右を正確にする。
-- rewrite が最重要。timeline のうち self の発言で、明確に損をしているものを最大6件選び、その entry の rewrite に「もっとこうすべきだった」を入れる。issue は何がまずいか、improved はそのまま送れる具体的な日本語の代替文、reason は改善理由。抽象論ではなく、そのままコピペできる文面を書く。それ以外の entry(partner の発言、問題のない self の発言)は rewrite を null にする。
+- rewrite が最重要。timeline のうち self の発言で、明確に損をしているものを最大6件選び、その entry の rewrite に「もっとこうすべきだった」を入れる。issue は何がまずいか、improved はそのまま送れる具体的な日本語の代替文を2〜3件(トーンや切り口を変える。似た言い回しの言い換えに留めない)、reason は改善理由。抽象論ではなく、そのままコピペできる文面を書く。それ以外の entry(partner の発言、問題のない self の発言)は rewrite を null にする。
 - next_moves は今この状況から送るべき次の一手を2〜3案。トーン違い(軽め/踏み込む/日程打診 など)で出し分ける。プロフィールの talking_points に自然に絡められる話題があれば積極的に使う(無理にこじつけない)。
 
 制約:
