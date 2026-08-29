@@ -65,6 +65,18 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 netlify env:set ANTHROPIC_API_KEY "sk-ant-..."
 ```
 
+解析結果の永続化(Rawログ + 正規化DB保存、[design.md](docs/design.md) 1.1節)には、Supabase の `Project URL` と `service_role` キー(secret キー。`anon` キーとは別物で、RLSを無視する強い権限を持つ)をサーバー側の環境変数として設定する。未設定でも動作するが、その場合は永続化されずこれまで通りステートレスに動く。
+
+```bash
+# ローカル
+export SUPABASE_URL="https://xxxx.supabase.co"
+export SUPABASE_SERVICE_ROLE_KEY="eyJ..."
+
+# 本番(Netlify)
+netlify env:set SUPABASE_URL "https://xxxx.supabase.co"
+netlify env:set SUPABASE_SERVICE_ROLE_KEY "eyJ..."
+```
+
 ### アプリ(app/)
 
 ```bash
@@ -83,12 +95,13 @@ flutter run \
 
 1. [supabase.com](https://supabase.com) でプロジェクトを作成する。
 2. プロジェクトの Settings → API から `Project URL` と `anon public` キーを控える(上記の `SUPABASE_URL` / `SUPABASE_ANON_KEY`)。
-3. `supabase/migrations/0001_init.sql` の内容を SQL Editor で実行し、テーブル(`persons` / `analyses` / `usage_counters`)と RLS ポリシーを作成する。
-4. Authentication → Providers で Google / Apple を有効化し、各プロバイダのOAuthクライアントを設定する。リダイレクトURLには `io.charmscale.app://login-callback` を追加する。
+3. `supabase/migrations/0001_init.sql` の内容を SQL Editor で実行し、テーブル群(`persons` / `analyses` とその子テーブル / `analysis_raw_logs` / `usage_counters`)と RLS ポリシーを作成する。
+4. Settings → API から `service_role` キー(secret)を控え、上記の `SUPABASE_SERVICE_ROLE_KEY` としてバックエンドに設定する。
+5. Authentication → Providers で Google / Apple を有効化し、各プロバイダのOAuthクライアントを設定する。リダイレクトURLには `io.charmscale.app://login-callback` を追加する。
 
 ## デプロイ
 
-バックエンドは Netlify に接続し、`ANTHROPIC_API_KEY` を環境変数に登録する。
+バックエンドは Netlify に接続し、`ANTHROPIC_API_KEY` / `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` を環境変数に登録する。
 アプリは `flutter build ipa` / `flutter build apk` でビルドし、それぞれのストアに配信する。
 
 ## 注意

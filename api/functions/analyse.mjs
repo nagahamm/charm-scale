@@ -1,4 +1,12 @@
 import Anthropic from "@anthropic-ai/sdk";
+import {
+  AUTH_INVALID,
+  AUTH_OK,
+  RESULT_SCHEMA_BY_MODE,
+  persistAnalysisResult,
+  persistRawLog,
+  verifyUser,
+} from "./persistence.mjs";
 
 const MODEL = "claude-opus-5";
 const MAX_IMAGES = 8;
@@ -359,6 +367,17 @@ export default async (req) => {
   const context = typeof payload?.context === "string" ? payload.context.slice(0, 2000) : "";
   const draftMessage = typeof payload?.draft_message === "string" ? payload.draft_message.trim() : "";
 
+  // 解析結果の永続化(docs/design.md 1.1節)。Authorization ヘッダーが無い、または
+  // Supabase が未設定の環境では匿名扱いとし、これまで通りステートレスに動作する。
+  const auth = await verifyUser(req.headers.get("authorization"));
+  if (auth.status === AUTH_INVALID) {
+    return json(401, { error: "認証情報が無効です。再度ログインしてください。" });
+  }
+  const personId = typeof payload?.person_id === "string" && payload.person_id.length > 0 ? payload.person_id : null;
+  if (auth.status === AUTH_OK && mode !== "draft_check" && !personId) {
+    return json(400, { error: "person_id が指定されていません。" });
+  }
+
   const buildImageBlocks = (imgs, { max, label, required }) => {
     if (imgs.length === 0 && required) return { error: `${label}の画像が1枚もありません。` };
     if (imgs.length > max) return { error: `${label}は最大${max}枚までです。` };
@@ -451,6 +470,7 @@ export default async (req) => {
         });
 
         let thinkingAnnounced = false;
+        let fullText = "";
         for await (const event of run) {
           if (event.type === "content_block_start" && event.content_block?.type === "thinking") {
             if (!thinkingAnnounced) {
@@ -459,6 +479,7 @@ export default async (req) => {
             }
           }
           if (event.type === "content_block_delta" && event.delta?.type === "text_delta") {
+            fullText += event.delta.text;
             send({ type: "delta", text: event.delta.text });
           }
         }
@@ -468,6 +489,23 @@ export default async (req) => {
           send({ type: "error", message: "この内容は解析できませんでした。" });
         } else {
           send({ type: "done" });
+
+          // クライアントへの応答完了後に永続化する(失敗してもクライアント体験には影響しない)。
+          if (auth.status === AUTH_OK) {
+            try {
+              const parsed = JSON.parse(fullText);
+              await persistRawLog({ userId: auth.userId, mode, rawResponse: parsed });
+
+              const validated = RESULT_SCHEMA_BY_MODE[mode].safeParse(parsed);
+              if (!validated.success) {
+                console.error("zod validation failed", validated.error.flatten());
+              } else if (mode !== "draft_check") {
+                await persistAnalysisResult({ mode, userId: auth.userId, personId, result: validated.data });
+              }
+            } catch (err) {
+              console.error("persistence failed", err);
+            }
+          }
         }
       } catch (err) {
         console.error("analyse failed", err);
