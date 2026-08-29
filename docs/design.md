@@ -47,12 +47,13 @@ Claude のストリーミング応答が完了
 ## 2. ドメインモデル
 
 ```
-User (1) ── (N) Person ── (N) Analysis
+User (1) ── (N) Person ── (N) Analysis (mode = chat)
+User (1) ─────────────────(N) Analysis (mode = photo)
 ```
 
 - **User**: アプリのアカウント本人。Supabase Auth が発行する `auth.users` をそのまま使う(アプリ独自の users テーブルは持たない)。
-- **Person**: User が管理する「相手」。User 以外の第三者の個人情報を含みうるため、User が削除すれば配下の Analysis も連鎖削除される。
-- **Analysis**: 1回の解析結果。`mode`(chat/photo)ごとに、`api/functions/analyse.mjs` の既存レスポンススキーマ(CHAT_SCHEMA / PHOTO_SCHEMA)を正規化テーブル群に分解して保存する(3節)。分解前の生データは `analysis_raw_logs` に別途残す(1.1節)ので、正規化スキーマを将来変更しても過去の生データは失われない。
+- **Person**: User が管理する「相手」。会話モード(chat)は特定の相手とのやり取りなので Person に紐づく。写真モード(photo)は相談者自身のプロフィール写真の評価であり、相手は存在しないため Person を持たない。User 以外の第三者の個人情報を含みうるため、User が削除すれば配下の Analysis も連鎖削除される。
+- **Analysis**: 1回の解析結果。`mode`(chat/photo)ごとに、`api/functions/analyse.mjs` の既存レスポンススキーマ(CHAT_SCHEMA / PHOTO_SCHEMA)を正規化テーブル群に分解して保存する(3節)。`person_id` は chat のみ必須、photo は null。分解前の生データは `analysis_raw_logs` に別途残す(1.1節)ので、正規化スキーマを将来変更しても過去の生データは失われない。
 
 集計(全体的なフィードバック)や利用回数は、独立した集計テーブルを持たず `analyses` 系テーブル・`usage_counters` への都度クエリで導出する。専用の集計テーブルは、実際にパフォーマンス上の問題が出てから検討する(YAGNI)。
 
@@ -72,7 +73,7 @@ create table persons (
 -- Analysis: 1回の解析結果(正規化された中心テーブル)
 create table analyses (
   id             uuid primary key default gen_random_uuid(),
-  person_id      uuid not null references persons(id) on delete cascade,
+  person_id      uuid references persons(id) on delete cascade, -- chatのみ必須。photoは相手がいないためnull
   user_id        uuid not null references auth.users(id) on delete cascade, -- RLS判定用に非正規化
   mode           text not null check (mode in ('chat', 'photo')),
   headline       text not null,
@@ -81,7 +82,8 @@ create table analyses (
   phase          text,                    -- chat のみ
   good_points    text[] not null default '{}',
   bad_points     text[] not null default '{}',
-  created_at     timestamptz not null default now()
+  created_at     timestamptz not null default now(),
+  check (person_id is not null or mode = 'photo')
 );
 
 -- 項目別スコア(chatは5項目、photoは2項目。key はスキーマ上の英語キー、label は日本語ラベル)

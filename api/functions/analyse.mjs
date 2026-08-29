@@ -374,7 +374,7 @@ export default async (req) => {
     return json(401, { error: "認証情報が無効です。再度ログインしてください。" });
   }
   const personId = typeof payload?.person_id === "string" && payload.person_id.length > 0 ? payload.person_id : null;
-  if (auth.status === AUTH_OK && mode !== "draft_check" && !personId) {
+  if (auth.status === AUTH_OK && mode === "chat" && !personId) {
     return json(400, { error: "person_id が指定されていません。" });
   }
 
