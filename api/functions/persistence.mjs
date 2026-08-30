@@ -10,7 +10,7 @@ export const AUTH_OK = "ok";
 
 let cachedClient;
 
-const getServiceClient = () => {
+export const getServiceClient = () => {
   const url = process.env.SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !serviceRoleKey) return null;
