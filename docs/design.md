@@ -247,9 +247,18 @@ create policy "own usage" on usage_counters
 
 ### 4.2 人別の履歴
 
-- ホーム画面の入口に Person 選択(または新規作成)を追加する。分析実行時に `person_id` を紐づけて `analyses` に insert する。
-- 履歴画面は `analyses` を `person_id` で絞り込み、`created_at` 降順で一覧表示する。
-- 一覧の各行をタップして詳細(既存の ResultScreen)を表示する際、正規化テーブルに分解済みのデータを、既存の CHAT_SCHEMA / PHOTO_SCHEMA と同じ形の JSON に組み立て直して返す必要がある(Flutter側のモデル・パース処理を作り直さずに済むため)。Postgres の SQL関数(またはビュー)で `analysis_id` から JSON を再構成し、アプリはそれをそのまま `ChatResult.fromJson` / `PhotoResult.fromJson` に渡す。実装は analyse.mjs 側の永続化コードと合わせて次のIssueで詰める。
+対象は会話モードのみ(写真モードは Person を持たないため、この節の対象外。1〜2節参照)。
+
+- ホーム画面(会話モード)の入口に Person 選択(または新規作成)を追加する。分析実行時に `person_id` を紐づけて `analyses` に insert する(既存の `analyse.mjs` の永続化ロジックに実装済み)。
+- Person の一覧・作成・削除、および Person に紐づく Analysis 一覧・詳細の取得は、`api/functions/analyses.mjs` という新しい Netlify Function(`/api/analyses`)で行う。`analyse.mjs` は「Claude 呼び出し+保存(書き込み専用)」に責務を絞り、履歴の読み出し・Person管理は別ファイルに分ける([CLAUDE.md](../CLAUDE.md) SOLID)。Supabase Service Role キーへのアクセス自体は `persistence.mjs` の `getServiceClient`/`verifyUser` を共通で再利用し、キーを直接読むファイルを増やさない。
+- エンドポイント設計(すべて `Authorization: Bearer <JWT>` 必須。無ければ401):
+  - `GET /api/analyses?resource=persons` — Person一覧。各 Person に、埋め込みクエリで取得した直近1件の Analysis 概要(headline / interest_score / phase / created_at)を添えて返す(一覧画面でのカード表示用)。
+  - `POST /api/analyses?resource=persons` — Person作成。body: `{ nickname }`。
+  - `DELETE /api/analyses?resource=persons&person_id=...` — Person削除(`analyses` 以下は外部キーの `on delete cascade` で連鎖削除される)。
+  - `GET /api/analyses?resource=list&person_id=...` — その Person の Analysis 一覧(id / headline / interest_score / phase / created_at)を `created_at` 降順で返す。
+  - `GET /api/analyses?resource=detail&analysis_id=...` — 正規化テーブル群(analyses / analysis_metrics / analysis_timeline_entries / analysis_rewrites / analysis_next_moves / analysis_profiles)から、既存の CHAT_SCHEMA と同じ形の JSON を組み立てて返す。Flutter はこれをそのまま `ChatResult.fromJson` に渡せる(モデル・パース処理を作り直さない)。
+  - すべてのクエリで `user_id = 該当ユーザー` を明示的に条件へ含める(Service Role キーはRLSを無視するため、アプリケーション側で必ず絞り込む)。
+- JSON の組み立ては Postgres の関数/ビューではなく、`analyses.mjs` 内の Node.js コードで行う(複数テーブルへの問い合わせ結果をJSにそのまま組み立てるだけなので、PL/pgSQLを新たに書く必要性が薄い。KISS)。
 
 ### 4.3 全体的なフィードバック
 

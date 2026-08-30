@@ -33,12 +33,14 @@
 | 画面 | `app/lib/screens/` | 画面構成・状態管理・ナビゲーション |
 | 部品 | `app/lib/widgets/` | 画面から再利用される表示部品。ロジックを持たない |
 | デザイントークン | `app/lib/theme.dart` | 色・サイズを一元管理。ウィジェットにリテラル値を直書きしない |
-| モデル | `app/lib/models/analysis.dart` | API レスポンスの型定義とパース。スキーマの定義自体は持たない |
+| モデル | `app/lib/models/` | API レスポンスの型定義とパース。スキーマの定義自体は持たない |
 | 通信 | `app/lib/services/` | 画像の取り込み・縮小(`image_prep.dart`)、NDJSON ストリーム受信(`analysis_api.dart`)。APIキーを持たない |
-| API | `api/functions/analyse.mjs` | Claude API 呼び出し、入力バリデーション、プロンプトとJSONスキーマの定義、解析結果の永続化(Rawログ保存 + Zod検証 + 正規化DB保存、[design.md](docs/design.md) 1.1節)。APIキー・Supabase Service Roleキーはここだけ |
+| API | `api/functions/analyse.mjs` | Claude API 呼び出し、入力バリデーション、プロンプトとJSONスキーマの定義、解析結果の永続化(書き込み専用。Rawログ保存 + Zod検証 + 正規化DB保存、[design.md](docs/design.md) 1.1節) |
+| API | `api/functions/analyses.mjs` | Person(相手)のCRUDと、Personに紐づくAnalysis履歴の一覧・詳細取得(読み出し専用。正規化テーブルからCHAT_SCHEMA形式のJSONを再構成する、[design.md](docs/design.md) 4.2節) |
+| API(共通) | `api/functions/persistence.mjs` | Supabaseクライアント初期化・JWT検証・Zodスキーマを集約。他のAPIファイルはここ経由でSupabaseにアクセスする |
 
-- プロンプトとJSONスキーマは `analyse.mjs` に集約する。アプリ側に散らさない。
-- APIキーは環境変数 `ANTHROPIC_API_KEY` のみから読む。アプリのビルドに埋め込まない。Supabase の Service Role キーも同様にサーバー側の環境変数のみから読み、アプリには渡さない。
+- プロンプトとJSONスキーマ(Claude用)は `analyse.mjs` に集約する。アプリ側に散らさない。
+- APIキーは環境変数 `ANTHROPIC_API_KEY` のみから読む。アプリのビルドに埋め込まない。Supabase の Service Role キーも同様にサーバー側の環境変数のみから読み、アプリには渡さない。Service Role キーを直接 `process.env` から読むのは `persistence.mjs` だけにする。
 - 認証(サインアップ/ログイン)は Flutter から Supabase Auth に直接行う。DBの読み書き(解析結果の保存・取得)は `analyse.mjs` を経由する([design.md](docs/design.md) 1節)。
 
 ## Core Principles
