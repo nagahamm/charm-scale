@@ -84,51 +84,53 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               ),
               for (final m in result.nextMoves) _NextMoveCard(move: m),
             ],
-            Padding(
-              padding: const EdgeInsets.only(top: AppSpacing.lg, bottom: 2),
-              child: Text("自分で書いてチェック", style: textTheme.titleMedium),
-            ),
-            const Padding(
-              padding: EdgeInsets.only(bottom: AppSpacing.sm),
-              child: Text(
-                "送ろうとしている文を確認できます",
-                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+            if (widget.images.isNotEmpty) ...[
+              Padding(
+                padding: const EdgeInsets.only(top: AppSpacing.lg, bottom: 2),
+                child: Text("自分で書いてチェック", style: textTheme.titleMedium),
               ),
-            ),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(AppSpacing.md),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    TextField(
-                      controller: _draftController,
-                      enabled: !_checking,
-                      maxLines: 3,
-                      decoration: const InputDecoration(
-                        labelText: "チェックする文",
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.md),
-                    FilledButton(
-                      onPressed: _checking ? null : _runCheck,
-                      child: _checking
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                            )
-                          : const Text("この文をチェックする"),
-                    ),
-                    if (_checkResult != null) ...[
-                      const SizedBox(height: AppSpacing.md),
-                      _DraftCheckResultView(result: _checkResult!),
-                    ],
-                  ],
+              const Padding(
+                padding: EdgeInsets.only(bottom: AppSpacing.sm),
+                child: Text(
+                  "送ろうとしている文を確認できます",
+                  style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
                 ),
               ),
-            ),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(AppSpacing.md),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      TextField(
+                        controller: _draftController,
+                        enabled: !_checking,
+                        maxLines: 3,
+                        decoration: const InputDecoration(
+                          labelText: "チェックする文",
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      FilledButton(
+                        onPressed: _checking ? null : _runCheck,
+                        child: _checking
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              )
+                            : const Text("この文をチェックする"),
+                      ),
+                      if (_checkResult != null) ...[
+                        const SizedBox(height: AppSpacing.md),
+                        _DraftCheckResultView(result: _checkResult!),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),
