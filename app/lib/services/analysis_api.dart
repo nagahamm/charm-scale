@@ -4,6 +4,7 @@ import "dart:convert";
 import "package:http/http.dart" as http;
 
 import "../models/analysis.dart";
+import "auth_service.dart";
 import "image_prep.dart";
 
 /// ビルド時に --dart-define=API_BASE_URL=https://your-site.netlify.app を渡す。
@@ -50,11 +51,13 @@ class AnalysisApiService {
     required List<PickedImage> images,
     List<PickedImage> profileImages = const [],
     String context = "",
+    String? personId,
   }) => _stream({
         "mode": mode.apiValue,
         "images": images.map((i) => i.toJson()).toList(),
         "profile_images": profileImages.map((i) => i.toJson()).toList(),
         "context": context,
+        if (personId != null) "person_id": personId,
       });
 
   Stream<AnalysisEvent> streamDraftCheck({
@@ -73,9 +76,11 @@ class AnalysisApiService {
       );
     }
 
+    final accessToken = AuthService().accessToken;
     final request = http.Request("POST", Uri.parse("$_apiBase/api/analyse"))
       ..headers["content-type"] = "application/json; charset=utf-8"
       ..body = jsonEncode(body);
+    if (accessToken != null) request.headers["authorization"] = "Bearer $accessToken";
 
     final response = await _client.send(request);
 

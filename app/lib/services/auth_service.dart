@@ -21,6 +21,9 @@ class AuthService {
 
   Session? get currentSession => _client.auth.currentSession;
 
+  /// バックエンドAPIへの Authorization ヘッダーに使う JWT。未ログイン・未設定なら null。
+  String? get accessToken => isSupabaseConfigured ? currentSession?.accessToken : null;
+
   Future<void> signInWithEmail({required String email, required String password}) =>
       _client.auth.signInWithPassword(email: email, password: password);
 

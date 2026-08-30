@@ -3,10 +3,12 @@ import "dart:convert";
 import "package:flutter/material.dart";
 
 import "../models/analysis.dart";
+import "../models/person.dart";
 import "../services/analysis_api.dart";
 import "../services/auth_service.dart";
 import "../services/image_prep.dart";
 import "../theme.dart";
+import "person_list_screen.dart";
 import "result_screen.dart";
 
 class HomeScreen extends StatefulWidget {
@@ -24,6 +26,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final List<PickedImage> _images = [];
   final List<PickedImage> _partnerProfileImages = [];
   final List<PickedImage> _selfProfileImages = [];
+  Person? _selectedPerson;
   bool _loading = false;
   String _status = "";
 
@@ -57,8 +60,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _removeFrom(List<PickedImage> target, int index) => setState(() => target.removeAt(index));
 
+  Future<void> _pickPerson() async {
+    final person = await Navigator.of(context).push<Person>(
+      MaterialPageRoute(builder: (_) => const PersonListScreen(pickMode: true)),
+    );
+    if (person != null && mounted) setState(() => _selectedPerson = person);
+  }
+
   Future<void> _submit() async {
     if (_images.isEmpty) return;
+    if (_mode == AnalysisMode.chat && _selectedPerson == null) return;
     setState(() {
       _loading = true;
       _status = "送信中…";
@@ -72,6 +83,7 @@ class _HomeScreenState extends State<HomeScreen> {
         images: _images,
         profileImages: _profileImagesForMode,
         context: _contextController.text,
+        personId: _mode == AnalysisMode.chat ? _selectedPerson?.id : null,
       )) {
         acc.add(event);
         switch (event) {
@@ -114,6 +126,15 @@ class _HomeScreenState extends State<HomeScreen> {
         actions: [
           if (isSupabaseConfigured)
             IconButton(
+              icon: const Icon(Icons.people_outline),
+              tooltip: "相手一覧",
+              onPressed: _loading
+                  ? null
+                  : () => Navigator.of(context)
+                      .push(MaterialPageRoute(builder: (_) => const PersonListScreen())),
+            ),
+          if (isSupabaseConfigured)
+            IconButton(
               icon: const Icon(Icons.logout),
               tooltip: "ログアウト",
               onPressed: _loading ? null : AuthService().signOut,
@@ -134,6 +155,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   ? null
                   : (selection) => setState(() => _mode = selection.first),
             ),
+            if (_mode == AnalysisMode.chat) ...[
+              const SizedBox(height: AppSpacing.md),
+              _PersonPickerCard(person: _selectedPerson, loading: _loading, onTap: _pickPerson),
+            ],
             const SizedBox(height: AppSpacing.md),
             _ImagePickerSection(
               title: _mode == AnalysisMode.chat ? "トーク画面" : "評価する写真",
@@ -170,7 +195,11 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: AppSpacing.lg),
             FilledButton(
-              onPressed: _loading || _images.isEmpty ? null : _submit,
+              onPressed: _loading ||
+                      _images.isEmpty ||
+                      (_mode == AnalysisMode.chat && _selectedPerson == null)
+                  ? null
+                  : _submit,
               child: _loading
                   ? Row(
                       mainAxisSize: MainAxisSize.min,
@@ -187,6 +216,41 @@ class _HomeScreenState extends State<HomeScreen> {
                   : const Text("分析する"),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PersonPickerCard extends StatelessWidget {
+  final Person? person;
+  final bool loading;
+  final VoidCallback onTap;
+
+  const _PersonPickerCard({required this.person, required this.loading, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return Card(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppSpacing.radius),
+        onTap: loading ? null : onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.md),
+          child: Row(
+            children: [
+              const Icon(Icons.person_outline, color: AppColors.textSecondary),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Text(
+                  person == null ? "相手を選択(必須)" : person!.nickname,
+                  style: textTheme.bodyMedium,
+                ),
+              ),
+              const Icon(Icons.chevron_right, color: AppColors.textSecondary),
+            ],
+          ),
         ),
       ),
     );
