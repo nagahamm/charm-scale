@@ -3,6 +3,8 @@ import {
   AUTH_INVALID,
   AUTH_OK,
   RESULT_SCHEMA_BY_MODE,
+  checkDailyLimit,
+  incrementDailyUsage,
   persistAnalysisResult,
   persistRawLog,
   verifyUser,
@@ -448,6 +450,14 @@ export default async (req) => {
     text: instruction + (context ? `\n\n補足情報(相談者による申告):\n${context}` : ""),
   });
 
+  // 1日あたりの解析回数の上限(docs/design.md 4.4節)。Claude を呼ぶ前に判定する。
+  const usage = await checkDailyLimit(auth.status === AUTH_OK ? auth.userId : null);
+  if (!usage.allowed) {
+    return json(429, {
+      error: `本日の解析回数の上限(${usage.limit}回)に達しました。日付が変わるまでお待ちください。`,
+    });
+  }
+
   const client = new Anthropic();
   const encoder = new TextEncoder();
 
@@ -492,6 +502,7 @@ export default async (req) => {
 
           // クライアントへの応答完了後に永続化する(失敗してもクライアント体験には影響しない)。
           if (auth.status === AUTH_OK) {
+            await incrementDailyUsage(auth.userId);
             try {
               const parsed = JSON.parse(fullText);
               await persistRawLog({ userId: auth.userId, mode, rawResponse: parsed });

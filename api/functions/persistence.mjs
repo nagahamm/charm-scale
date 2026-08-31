@@ -35,6 +35,60 @@ export const verifyUser = async (authorizationHeader) => {
   return { status: AUTH_OK, userId: data.user.id };
 };
 
+// --- 利用回数の制限(docs/design.md 4.4節) ---
+
+export const DEFAULT_DAILY_ANALYSIS_LIMIT = 20;
+
+// 上限値は環境変数で運営が設定する。未設定・不正値はデフォルトに落とす。
+export const dailyAnalysisLimit = (env = process.env) => {
+  const raw = env.DAILY_ANALYSIS_LIMIT;
+  if (typeof raw !== "string" || raw.trim() === "") return DEFAULT_DAILY_ANALYSIS_LIMIT;
+  const parsed = Number(raw.trim());
+  if (!Number.isInteger(parsed) || parsed < 0) return DEFAULT_DAILY_ANALYSIS_LIMIT;
+  return parsed;
+};
+
+// 日付の境界は日本時間(UTC+9)。UTC の境界は日本時間の午前9時にあたり、利用者の感覚と合わないため。
+export const jstDay = (now = new Date()) =>
+  new Date(now.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+// 当日の利用状況。Supabase 未設定・匿名リクエストでは制限をかけない(従来のステートレスな挙動を維持)。
+export const checkDailyLimit = async (userId) => {
+  const limit = dailyAnalysisLimit();
+  const client = getServiceClient();
+  if (!client || !userId) return { allowed: true, limit, count: 0 };
+
+  const { data, error } = await client
+    .from("usage_counters")
+    .select("count")
+    .eq("user_id", userId)
+    .eq("day", jstDay())
+    .maybeSingle();
+  if (error) {
+    // 回数を確認できないときは解析を止めない(可用性を優先する)。
+    console.error("usage lookup failed", error);
+    return { allowed: true, limit, count: 0 };
+  }
+
+  const count = data?.count ?? 0;
+  return { allowed: count < limit, limit, count };
+};
+
+// 解析が完了したときのみ加算する。クライアントへの応答後に呼ぶため、失敗はログのみ。
+export const incrementDailyUsage = async (userId) => {
+  const client = getServiceClient();
+  if (!client || !userId) return;
+  try {
+    const { error } = await client.rpc("increment_usage_counter", {
+      p_user_id: userId,
+      p_day: jstDay(),
+    });
+    if (error) console.error("usage increment failed", error);
+  } catch (err) {
+    console.error("usage increment failed", err);
+  }
+};
+
 export const persistRawLog = async ({ userId, mode, rawResponse }) => {
   const client = getServiceClient();
   if (!client) return;

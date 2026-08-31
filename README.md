@@ -77,6 +77,12 @@ netlify env:set SUPABASE_URL "https://xxxx.supabase.co"
 netlify env:set SUPABASE_SERVICE_ROLE_KEY "eyJ..."
 ```
 
+1日あたりの解析回数の上限([design.md](docs/design.md) 4.4節)は環境変数 `DAILY_ANALYSIS_LIMIT` で設定する。未設定なら20回。日付の境界は日本時間で、会話・写真・下書きチェックのすべてが同じ枠を消費する。ログイン済みのリクエストのみが対象。
+
+```bash
+netlify env:set DAILY_ANALYSIS_LIMIT "20"
+```
+
 ### アプリ(app/)
 
 ```bash
@@ -95,7 +101,7 @@ flutter run \
 
 1. [supabase.com](https://supabase.com) でプロジェクトを作成する。
 2. プロジェクトの Settings → API から `Project URL` と `anon public` キーを控える(上記の `SUPABASE_URL` / `SUPABASE_ANON_KEY`)。
-3. `supabase/migrations/0001_init.sql` の内容を SQL Editor で実行し、テーブル群(`persons` / `analyses` とその子テーブル / `analysis_raw_logs` / `usage_counters`)と RLS ポリシーを作成する。
+3. `supabase/migrations/` の SQL を番号順(`0001_init.sql` → `0002_…` → `0003_…`)に SQL Editor で実行し、テーブル群(`persons` / `analyses` とその子テーブル / `analysis_raw_logs` / `usage_counters`)・RLS ポリシー・利用回数の加算関数を作成する。
 4. Settings → API から `service_role` キー(secret)を控え、上記の `SUPABASE_SERVICE_ROLE_KEY` としてバックエンドに設定する。
 5. Authentication → Providers で Google / Apple を有効化し、各プロバイダのOAuthクライアントを設定する。リダイレクトURLには `io.charmscale.app://login-callback` を追加する。
 
