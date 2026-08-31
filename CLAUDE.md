@@ -37,7 +37,7 @@
 | 通信 | `app/lib/services/` | 画像の取り込み・縮小(`image_prep.dart`)、NDJSON ストリーム受信(`analysis_api.dart`)。APIキーを持たない |
 | API | `api/functions/analyse.mjs` | Claude API 呼び出し、入力バリデーション、プロンプトとJSONスキーマの定義、解析結果の永続化(書き込み専用。Rawログ保存 + Zod検証 + 正規化DB保存、[design.md](docs/design.md) 1.1節) |
 | API | `api/functions/analyses.mjs` | Person(相手)のCRUDと、Personに紐づくAnalysis履歴の一覧・詳細取得(読み出し専用。正規化テーブルからCHAT_SCHEMA形式のJSONを再構成する、[design.md](docs/design.md) 4.2節) |
-| API(共通) | `api/functions/persistence.mjs` | Supabaseクライアント初期化・JWT検証・Zodスキーマを集約。他のAPIファイルはここ経由でSupabaseにアクセスする |
+| API(共通) | `api/functions/persistence.mjs` | Supabaseクライアント初期化・JWT検証・Zodスキーマ・利用回数の集計(1日あたりの解析回数上限、[design.md](docs/design.md) 4.4節)を集約。他のAPIファイルはここ経由でSupabaseにアクセスする |
 
 - プロンプトとJSONスキーマ(Claude用)は `analyse.mjs` に集約する。アプリ側に散らさない。
 - APIキーは環境変数 `ANTHROPIC_API_KEY` のみから読む。アプリのビルドに埋め込まない。Supabase の Service Role キーも同様にサーバー側の環境変数のみから読み、アプリには渡さない。Service Role キーを直接 `process.env` から読むのは `persistence.mjs` だけにする。

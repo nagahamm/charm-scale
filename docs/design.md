@@ -234,6 +234,21 @@ create policy "own raw logs (read only)" on analysis_raw_logs
 create policy "own usage" on usage_counters
   for select using (auth.uid() = user_id);
 -- usage_counters への insert/update も Service Role(analyse.mjs)からのみ。
+
+-- 当日カウントの加算(0003_increment_usage_counter.sql)。
+-- 同一ユーザーの解析が同時に走っても取りこぼさないよう、1文で原子的に加算する。
+create function increment_usage_counter(p_user_id uuid, p_day date)
+returns integer
+language sql
+security definer
+set search_path = public
+as $$
+  insert into usage_counters (user_id, day, count)
+  values (p_user_id, p_day, 1)
+  on conflict (user_id, day) do update set count = usage_counters.count + 1
+  returning count;
+$$;
+revoke execute on function increment_usage_counter(uuid, date) from public, anon, authenticated;
 ```
 
 ## 4. 機能ごとの実装方針
@@ -268,8 +283,15 @@ create policy "own usage" on usage_counters
 
 ### 4.4 利用制限
 
-- `analyse.mjs` の冒頭で、リクエストの Supabase JWT からユーザーを特定し、`usage_counters` の当日カウントを確認する。上限超過なら 429 相当のエラーを返す(既存の `friendlyError` パターンを踏襲)。
-- カウントの加算は解析が実際に完了した(ストリームが `done` で終わった)タイミングで行い、失敗した解析ではカウントしない。
+- **上限値**: 環境変数 `DAILY_ANALYSIS_LIMIT`(未設定・不正値のときのデフォルトは20)。コードにハードコードしない(4.1節の新規登録上限と同じ方針)。`0` を指定すると認証済みリクエストの解析を全面的に止められる。
+- **日付の境界**: 日本時間(UTC+9)の暦日。利用者が日本在住である前提で、UTC の日付境界(日本時間の午前9時)でリセットされる不自然さを避ける。`usage_counters.day` にはこの JST 基準の日付を入れる。
+- **カウント対象**: chat / photo / draft_check の全モード。いずれも Claude 呼び出しが発生し、コストは同じように積み上がるため、モードごとに枠を分けない(YAGNI)。
+- **判定と加算の位置**:
+  - 判定は `analyse.mjs` の入力バリデーション後・Claude 呼び出し前。`usage_counters` の当日カウントを読み、上限以上なら HTTP 429 と `{ error }` を返す。アプリ側は既存の非200レスポンス処理(`AnalysisApiService._extractErrorMessage`)でそのままメッセージを表示できるため、アプリの変更は不要。
+  - 加算はストリームが `done` で終わったタイミング(永続化と同じ位置)。Claude 呼び出しに失敗した解析は消費しない。加算に失敗しても、既にクライアントへ結果を返した後なので握りつぶしてログのみ残す(1.1節の Rawログと同じ fire-and-forget)。
+  - 判定から加算までの間に別リクエストが走ると上限を1回分超えうるが、上限はコスト制御の目安であり厳密なトランザクション整合性は求めない(KISS)。加算自体は取りこぼさないよう Postgres 側の関数で原子的に行う(3節 `increment_usage_counter`)。
+- **実装の置き場所**: `usage_counters` への読み書きは `persistence.mjs`(Supabase アクセスの集約先)に置き、`analyse.mjs` はその判定結果を使うだけにする。Service Role キーを直接読むファイルを増やさない。
+- **匿名リクエスト**: Supabase 未設定・Authorization ヘッダー無しの場合はユーザーを特定できないため制限をかけない(従来のステートレスな挙動を維持)。アプリは `AuthGate` でログイン必須のため、実運用のリクエストは必ず JWT を伴う。
 
 ## 5. 移行方針
 
