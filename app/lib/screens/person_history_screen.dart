@@ -4,6 +4,7 @@ import "../models/analysis.dart";
 import "../models/person.dart";
 import "../services/history_api.dart";
 import "../theme.dart";
+import "../widgets/trend_chart.dart";
 import "result_screen.dart";
 
 /// 特定の Person(相手)の分析履歴一覧(docs/requirements.md 4.2節)。
@@ -54,7 +55,6 @@ class _PersonHistoryScreenState extends State<PersonHistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
     return Scaffold(
       appBar: AppBar(title: Text(widget.person.nickname)),
       body: SafeArea(
@@ -81,60 +81,112 @@ class _PersonHistoryScreenState extends State<PersonHistoryScreen> {
             if (analyses.isEmpty) {
               return const Center(child: Padding(padding: EdgeInsets.all(AppSpacing.lg), child: Text("まだ分析がありません。")));
             }
-            return ListView.separated(
-              padding: const EdgeInsets.all(AppSpacing.md),
-              itemCount: analyses.length,
-              separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.sm),
-              itemBuilder: (context, index) {
-                final summary = analyses[index];
-                final loading = _openingId == summary.id;
-                return Card(
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(AppSpacing.radius),
-                    onTap: loading ? null : () => _open(summary),
-                    child: Padding(
-                      padding: const EdgeInsets.all(AppSpacing.md),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    if (summary.interestScore != null)
-                                      Text(
-                                        "${summary.interestScore}",
-                                        style: textTheme.titleMedium?.copyWith(
-                                          color: AppColors.forScore(summary.interestScore!),
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    if (summary.phase != null) ...[
-                                      const SizedBox(width: AppSpacing.sm),
-                                      Chip(label: Text(summary.phase!), visualDensity: VisualDensity.compact),
-                                    ],
-                                  ],
-                                ),
-                                const SizedBox(height: 2),
-                                Text(summary.headline, style: textTheme.bodyMedium),
-                                const SizedBox(height: 2),
-                                Text(_formatDate(summary.createdAt), style: textTheme.bodySmall),
-                              ],
-                            ),
-                          ),
-                          if (loading)
-                            const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                          else
-                            const Icon(Icons.chevron_right, color: AppColors.textSecondary),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              },
+            final scored = scoredInOrder(analyses);
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (scored.length >= 2) _TrendSection(analyses: scored),
+                Expanded(child: _buildList(analyses)),
+              ],
             );
           },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildList(List<AnalysisSummary> analyses) {
+    final textTheme = Theme.of(context).textTheme;
+    return ListView.separated(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      itemCount: analyses.length,
+      separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.sm),
+      itemBuilder: (context, index) {
+        final summary = analyses[index];
+        final loading = _openingId == summary.id;
+        return Card(
+          child: InkWell(
+            borderRadius: BorderRadius.circular(AppSpacing.radius),
+            onTap: loading ? null : () => _open(summary),
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpacing.md),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            if (summary.interestScore != null)
+                              Text(
+                                "${summary.interestScore}",
+                                style: textTheme.titleMedium?.copyWith(
+                                  color: AppColors.forScore(summary.interestScore!),
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            if (summary.phase != null) ...[
+                              const SizedBox(width: AppSpacing.sm),
+                              Chip(label: Text(summary.phase!), visualDensity: VisualDensity.compact),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        Text(summary.headline, style: textTheme.bodyMedium),
+                        const SizedBox(height: 2),
+                        Text(_formatDate(summary.createdAt), style: textTheme.bodySmall),
+                      ],
+                    ),
+                  ),
+                  if (loading)
+                    const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                  else
+                    const Icon(Icons.chevron_right, color: AppColors.textSecondary),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// 食いつき度数を持つ分析だけを、古い順に並べ替えて返す(推移グラフ用)。
+/// APIのレスポンス順に依存しないよう created_at で整列する。
+List<AnalysisSummary> scoredInOrder(List<AnalysisSummary> analyses) =>
+    analyses.where((a) => a.interestScore != null).toList()
+      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+
+/// 分析をまたいだ食いつき度数の推移(docs/requirements.md 3.3節)。
+class _TrendSection extends StatelessWidget {
+  final List<AnalysisSummary> analyses;
+
+  const _TrendSection({required this.analyses});
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.md),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text("食いつき度数の推移", style: textTheme.titleMedium),
+              TrendChart(values: [for (final a in analyses) a.interestScore!]),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(_formatDate(analyses.first.createdAt), style: textTheme.bodySmall),
+                  Text(_formatDate(analyses.last.createdAt), style: textTheme.bodySmall),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -80,7 +80,7 @@ class _ChatResultView extends StatelessWidget {
         MetricBarGroup(items: result.metrics.labeled),
         if (result.timeline.length >= 2) ...[
           const _SectionTitle("食いつき度数の推移"),
-          TrendChart(timeline: result.timeline),
+          TrendChart(values: [for (final e in result.timeline) e.interest]),
         ],
         if (result.goodPoints.isNotEmpty) ...[
           const _SectionTitle("良かった点"),

@@ -1,25 +1,25 @@
 import "package:flutter/material.dart";
 
-import "../models/analysis.dart";
 import "../theme.dart";
 
-/// timeline の interest 推移を折れ線で表示する。どこで落ちたかが一目で分かるようにする。
+/// 0〜100 のスコアの推移を折れ線で表示する。会話の中の推移(timeline)にも、
+/// 分析をまたいだ推移(履歴画面)にも使う。並び順・値の抽出は呼び出し側の責務。
 class TrendChart extends StatelessWidget {
-  final List<TimelineEntry> timeline;
+  final List<int> values;
   final double height;
 
-  const TrendChart({super.key, required this.timeline, this.height = 140});
+  const TrendChart({super.key, required this.values, this.height = 140});
 
   @override
   Widget build(BuildContext context) {
-    if (timeline.length < 2) {
+    if (values.length < 2) {
       return const SizedBox.shrink();
     }
     return SizedBox(
       height: height,
       child: CustomPaint(
         size: Size.infinite,
-        painter: _TrendPainter(values: timeline.map((e) => e.interest).toList()),
+        painter: _TrendPainter(values: values),
       ),
     );
   }
