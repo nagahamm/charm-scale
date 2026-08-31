@@ -273,6 +273,7 @@ revoke execute on function increment_usage_counter(uuid, date) from public, anon
   - `GET /api/analyses?resource=list&person_id=...` — その Person の Analysis 一覧(id / headline / interest_score / phase / created_at)を `created_at` 降順で返す。
   - `GET /api/analyses?resource=detail&analysis_id=...` — 正規化テーブル群(analyses / analysis_metrics / analysis_timeline_entries / analysis_rewrites / analysis_next_moves / analysis_profiles)から、既存の CHAT_SCHEMA と同じ形の JSON を組み立てて返す。Flutter はこれをそのまま `ChatResult.fromJson` に渡せる(モデル・パース処理を作り直さない)。
   - すべてのクエリで `user_id = 該当ユーザー` を明示的に条件へ含める(Service Role キーはRLSを無視するため、アプリケーション側で必ず絞り込む)。
+- **食いつき度数の推移グラフ**: `GET …?resource=list` が既に返している `interest_score` / `created_at` をそのまま使い、API は変更しない。`PersonHistoryScreen` が `created_at` の昇順に整列して `TrendChart` に渡す(レスポンスの並び順に依存しない)。`TrendChart` は1回の分析内の `timeline` の推移にも、分析をまたいだ推移にも使うため、`List<int>` を受け取る汎用の折れ線部品とする(部品はロジックを持たない、という責務に合わせる)。
 - JSON の組み立ては Postgres の関数/ビューではなく、`analyses.mjs` 内の Node.js コードで行う(複数テーブルへの問い合わせ結果をJSにそのまま組み立てるだけなので、PL/pgSQLを新たに書く必要性が薄い。KISS)。
 
 ### 4.3 全体的なフィードバック
