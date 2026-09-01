@@ -103,6 +103,11 @@ flutter run \
 2. プロジェクトの Settings → API から `Project URL` と `anon public` キーを控える(上記の `SUPABASE_URL` / `SUPABASE_ANON_KEY`)。
 3. `supabase/migrations/` の SQL を番号順(`0001_init.sql` → `0002_…` → `0003_…`)に SQL Editor で実行し、テーブル群(`persons` / `analyses` とその子テーブル / `analysis_raw_logs` / `usage_counters`)・RLS ポリシー・利用回数の加算関数を作成する。
 4. Settings → API から `service_role` キー(secret)を控え、上記の `SUPABASE_SERVICE_ROLE_KEY` としてバックエンドに設定する。
+5. 新規登録者数の上限([design.md](docs/design.md) 4.1節)は `signup_policy` テーブルの1行で管理する(初期値100)。変更するときは SQL Editor で次を実行する。上限に達すると新規登録は拒否され、ログイン画面に受付停止の案内が出る(既存アカウントのログインには影響しない)。
+
+```sql
+update signup_policy set max_users = 200, updated_at = now();
+```
 5. Authentication → Providers で Google / Apple を有効化し、各プロバイダのOAuthクライアントを設定する。リダイレクトURLには `io.charmscale.app://login-callback` を追加する。
 
 ## デプロイ
