@@ -1,6 +1,7 @@
 import "package:flutter/material.dart";
 
 import "../services/auth_service.dart";
+import "../services/signup_api.dart";
 import "../theme.dart";
 
 class SignInScreen extends StatefulWidget {
@@ -15,15 +16,31 @@ class _SignInScreenState extends State<SignInScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
 
+  final _signupApi = SignupApiService();
+
   bool _isSignUp = false;
   bool _loading = false;
+  bool _acceptingSignUp = true;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSignUpStatus();
+  }
 
   @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _signupApi.dispose();
     super.dispose();
+  }
+
+  /// 新規登録の受付可否(docs/requirements.md 3.5節)。確認できない場合は受付中として扱う。
+  Future<void> _loadSignUpStatus() async {
+    final accepting = await _signupApi.fetchAccepting();
+    if (mounted) setState(() => _acceptingSignUp = accepting);
   }
 
   Future<void> _run(Future<void> Function() action) async {
@@ -44,6 +61,7 @@ class _SignInScreenState extends State<SignInScreen> {
     final email = _emailController.text.trim();
     final password = _passwordController.text;
     if (email.isEmpty || password.isEmpty) return;
+    if (_isSignUp && !_acceptingSignUp) return;
     await _run(
       () => _isSignUp
           ? _auth.signUpWithEmail(email: email, password: password)
@@ -68,6 +86,19 @@ class _SignInScreenState extends State<SignInScreen> {
                   style: Theme.of(context).textTheme.headlineSmall,
                 ),
                 const SizedBox(height: AppSpacing.xl),
+                if (!_acceptingSignUp) ...[
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(AppSpacing.md),
+                      child: Text(
+                        "現在、新規登録の受付を停止しています。空きが出るまでお待ちください。"
+                        "すでにアカウントをお持ちの方はログインできます。",
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                ],
                 if (!isSupabaseConfigured)
                   const Padding(
                     padding: EdgeInsets.only(bottom: AppSpacing.md),
@@ -120,7 +151,9 @@ class _SignInScreenState extends State<SignInScreen> {
                 ],
                 const SizedBox(height: AppSpacing.md),
                 FilledButton(
-                  onPressed: _loading || !isSupabaseConfigured ? null : _submitEmail,
+                  onPressed: _loading || !isSupabaseConfigured || (_isSignUp && !_acceptingSignUp)
+                      ? null
+                      : _submitEmail,
                   child: Text(_isSignUp ? "アカウントを作成" : "ログイン"),
                 ),
                 const SizedBox(height: AppSpacing.sm),
