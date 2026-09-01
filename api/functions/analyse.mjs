@@ -17,6 +17,7 @@ const ALLOWED_MEDIA_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif
 const MODES = ["chat", "photo", "draft_check"];
 const MAX_PROFILE_IMAGES = 8;
 const MAX_DRAFT_MESSAGE_LENGTH = 500;
+const MAX_PREVIOUS_SUMMARY_LENGTH = 2000;
 
 const SCORE = { type: "integer", minimum: 0, maximum: 100 };
 
@@ -332,6 +333,18 @@ const DRAFT_CHECK_SYSTEM = `あなたはマッチングアプリの会話コー�
 - 数値的な確率(例: 「80%の確率で」)は一切出さない。単一の推論に対して精度を保証できる数値ではないため。
 - 相手を操作・強要するための文面は提案しない。`;
 
+// docs/design.md 4.2節: 続きのスクショで分析を更新するとき、前回までの流れを引き継ぐための指示。
+// 利用者申告の context とは別物として、アプリが以前生成した要約であることを明示する。
+export const previousSummaryInstruction = (summary) => {
+  const trimmed = typeof summary === "string" ? summary.trim() : "";
+  if (trimmed === "") return "";
+  return (
+    `\n\n前回までの分析の要約(このアプリが以前生成したもの。相談者の申告ではない):\n${trimmed}\n\n` +
+    "今回のスクリーンショットは、この続きのやり取り。スクショに写っていない過去のやり取りはこの要約で補って全体の流れを判断する。" +
+    "ただし要約自体がAIの出力であるため、スクショから読み取れる事実と食い違う場合はスクショを優先する。"
+  );
+};
+
 const friendlyError = (err) => {
   const status = err?.status;
   if (status === 401 || status === 403) return "APIキーの設定を確認してください。";
@@ -368,6 +381,11 @@ export default async (req) => {
   const profileImages = Array.isArray(payload?.profile_images) ? payload.profile_images : [];
   const context = typeof payload?.context === "string" ? payload.context.slice(0, 2000) : "";
   const draftMessage = typeof payload?.draft_message === "string" ? payload.draft_message.trim() : "";
+  // 前回までの分析の要約(chat のみ)。アプリが生成した値なので、長すぎる場合はエラーにせず切り詰める。
+  const previousSummary =
+    mode === "chat" && typeof payload?.previous_summary === "string"
+      ? payload.previous_summary.slice(0, MAX_PREVIOUS_SUMMARY_LENGTH)
+      : "";
 
   // 解析結果の永続化(docs/design.md 1.1節)。Authorization ヘッダーが無い、または
   // Supabase が未設定の環境では匿名扱いとし、これまで通りステートレスに動作する。
@@ -416,7 +434,8 @@ export default async (req) => {
     instruction =
       `上記${images.length}枚の会話スクリーンショットを時系列順の会話として読み、` +
       (profileImages.length > 0 ? `プロフィール${profileImages.length}枚も参考にしつつ、` : "") +
-      `スキーマに従って分析結果を返して。`;
+      `スキーマに従って分析結果を返して。` +
+      previousSummaryInstruction(previousSummary);
   } else if (mode === "photo") {
     const photoResult = buildImageBlocks(images, { max: MAX_IMAGES, label: "", required: true });
     if (photoResult.error) return json(400, { error: photoResult.error });
