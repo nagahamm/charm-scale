@@ -274,6 +274,7 @@ revoke execute on function increment_usage_counter(uuid, date) from public, anon
   - `GET /api/analyses?resource=detail&analysis_id=...` — 正規化テーブル群(analyses / analysis_metrics / analysis_timeline_entries / analysis_rewrites / analysis_next_moves / analysis_profiles)から、既存の CHAT_SCHEMA と同じ形の JSON を組み立てて返す。Flutter はこれをそのまま `ChatResult.fromJson` に渡せる(モデル・パース処理を作り直さない)。
   - すべてのクエリで `user_id = 該当ユーザー` を明示的に条件へ含める(Service Role キーはRLSを無視するため、アプリケーション側で必ず絞り込む)。
 - **食いつき度数の推移グラフ**: `GET …?resource=list` が既に返している `interest_score` / `created_at` をそのまま使い、API は変更しない。`PersonHistoryScreen` が `created_at` の昇順に整列して `TrendChart` に渡す(レスポンスの並び順に依存しない)。`TrendChart` は1回の分析内の `timeline` の推移にも、分析をまたいだ推移にも使うため、`List<int>` を受け取る汎用の折れ線部品とする(部品はロジックを持たない、という責務に合わせる)。
+- **続きのスクショで分析を更新する**: 導線は履歴画面に置き、分析画面は `HomeScreen` を「相手固定・会話モード固定」で再利用する(画像選択UIを二重に作らない、DRY)。直前の分析の要約は既存の `resource=detail` から取得し、`POST /api/analyse` の `previous_summary`(chat モードのみ、2000文字で切り詰め)として渡す。利用者申告の `context` とは別フィールドにして、プロンプトでも「このアプリが以前生成した要約」と位置づけを明示する(出所を混ぜない)。スクショに写っていない過去のやり取りは要約で補うが、スクショから読み取れる事実を優先させる。解析結果は既存の永続化経路でその相手の新しい Analysis として保存されるため、保存側の変更は不要。
 - JSON の組み立ては Postgres の関数/ビューではなく、`analyses.mjs` 内の Node.js コードで行う(複数テーブルへの問い合わせ結果をJSにそのまま組み立てるだけなので、PL/pgSQLを新たに書く必要性が薄い。KISS)。
 
 ### 4.3 全体的なフィードバック
