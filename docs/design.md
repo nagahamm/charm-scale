@@ -249,6 +249,24 @@ as $$
   returning count;
 $$;
 revoke execute on function increment_usage_counter(uuid, date) from public, anon, authenticated;
+
+-- 新規登録数の上限(0004_signup_limit.sql)。上限値は運営が update する1行だけのテーブルに置く。
+create table signup_policy (
+  id         boolean primary key default true check (id),
+  max_users  integer not null check (max_users >= 0),
+  updated_at timestamptz not null default now()
+);
+
+-- 受付可否の判定。auth.users の before insert トリガーと /api/signup-status の双方がこれを使う。
+-- signup_policy が空なら null を返し、呼び出し側は登録を許可する(fail-open)。
+create function signup_accepting()
+returns boolean
+language sql
+security definer
+set search_path = public, auth
+as $$
+  select (select count(*) from auth.users) < (select max_users from signup_policy where id);
+$$;
 ```
 
 ## 4. 機能ごとの実装方針
@@ -256,9 +274,14 @@ revoke execute on function increment_usage_counter(uuid, date) from public, anon
 ### 4.1 アカウント
 
 - Supabase Auth のメール+パスワードと、標準対応の OAuth プロバイダ(Google, Apple)をそのまま使う。独自の認証基盤は実装しない。
-- iOS では、他のソーシャルログインを提供する場合 Apple の審査ガイドラインにより Sign in with Apple が実質必須のため、Google と同時に対応する。
-- **LINEログイン**: Supabase Auth に標準搭載されていない([参考](https://github.com/orgs/supabase/discussions/20178))。LINE 自体は OAuth2/OIDC に対応しているため、Supabase の [Custom OAuth/OIDC Providers](https://supabase.com/docs/guides/auth/custom-oauth-providers) 機能で個別に設定すれば対応できる。LINE Developers コンソールでのアプリ登録(本人の手作業)が前提になるため、別Issueで扱う。
-- 新規登録数の上限は、サインアップ前に `select count(*) from auth.users` を Edge Function 等で確認するか、Supabase の招待制(invite-only)機能を使う。上限値は環境変数で管理し、コードにハードコードしない。
+- iOS では、他のソーシャルログインを提供する場合 Apple の審査ガイドラインにより Sign in with Apple が実質必須のため、Google と同時に対応する。LINEログインは扱わない(要件定義 6節)。
+- **新規登録数の上限**:
+  - 強制はDB側で行う。アプリは Supabase Auth へ直接サインアップする(1節)ため、アプリやAPIでのチェックだけでは anon キーを使って回避できてしまう。`auth.users` への `before insert` トリガーで、既存ユーザー数が上限に達していれば例外を投げて登録を拒否する。
+  - 上限値はシングルトンの設定テーブル `signup_policy.max_users` に置く。トリガーはサーバーの環境変数を読めないため、ここだけ環境変数ではなくDBに置き、トリガーとAPIが同じ値を参照する(値の二重管理を避ける)。運営は1行の `update` で変更する。
+  - 受付可否の判定は Postgres 関数 `signup_accepting()` に集約し、トリガーとAPIの双方がこれを呼ぶ(判定ロジックを二重に書かない)。
+  - 案内のために `GET /api/signup-status` を追加する(`api/functions/signup.mjs`)。アカウントを持たない利用者が呼ぶため認証は不要。返すのは `{ accepting }` のみで、現在のユーザー数や上限値は返さない(外部に晒す必要がない)。
+  - ログイン画面は起動時にこれを見て、受付停止中は新規登録の導線を止めて案内を出す。既存アカウントのログイン(メール・OAuth)は止めない。
+  - 設定が未投入(`signup_policy` が空)・APIの確認に失敗した場合は登録を許可する(fail-open)。締め出しの事故を避けるため、上限は「増えすぎを止める」目的に限る。
 
 ### 4.2 人別の履歴
 
