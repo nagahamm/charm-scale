@@ -12,7 +12,12 @@ import "person_list_screen.dart";
 import "result_screen.dart";
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  /// 続きのスクショで分析する場合のみ渡す(docs/requirements.md 3.3節)。
+  /// 相手と会話モードを固定し、前回の分析の要約を引き継ぐ。
+  final Person? continuingPerson;
+  final String? previousSummary;
+
+  const HomeScreen({super.key, this.continuingPerson, this.previousSummary});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -30,6 +35,14 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _loading = false;
   String _status = "";
 
+  bool get _isContinuation => widget.continuingPerson != null;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedPerson = widget.continuingPerson;
+  }
+
   List<PickedImage> get _profileImagesForMode =>
       _mode == AnalysisMode.chat ? _partnerProfileImages : _selfProfileImages;
 
@@ -40,6 +53,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   String get _imagesHint => switch (_mode) {
+        AnalysisMode.chat when _isContinuation => "前回の分析より後のやり取りのスクショを時系列順に追加",
         AnalysisMode.chat => "トーク画面のスクショを時系列順に追加",
         AnalysisMode.photo => "1枚目がメイン写真になります。人物だけでなく、背景・食事などのサブ写真も追加できます",
       };
@@ -83,7 +97,8 @@ class _HomeScreenState extends State<HomeScreen> {
         images: _images,
         profileImages: _profileImagesForMode,
         context: _contextController.text,
-        personId: _mode == AnalysisMode.chat ? _selectedPerson?.id : null,
+        personId: _selectedPerson?.id,
+        previousSummary: widget.previousSummary,
       )) {
         acc.add(event);
         switch (event) {
@@ -122,9 +137,9 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("振り返り"),
+        title: Text(_isContinuation ? "続きを分析" : "振り返り"),
         actions: [
-          if (isSupabaseConfigured)
+          if (isSupabaseConfigured && !_isContinuation)
             IconButton(
               icon: const Icon(Icons.people_outline),
               tooltip: "相手一覧",
@@ -133,7 +148,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   : () => Navigator.of(context)
                       .push(MaterialPageRoute(builder: (_) => const PersonListScreen())),
             ),
-          if (isSupabaseConfigured)
+          if (isSupabaseConfigured && !_isContinuation)
             IconButton(
               icon: const Icon(Icons.logout),
               tooltip: "ログアウト",
@@ -145,19 +160,28 @@ class _HomeScreenState extends State<HomeScreen> {
         child: ListView(
           padding: const EdgeInsets.all(AppSpacing.md),
           children: [
-            SegmentedButton<AnalysisMode>(
-              segments: const [
-                ButtonSegment(value: AnalysisMode.chat, label: Text("会話")),
-                ButtonSegment(value: AnalysisMode.photo, label: Text("写真")),
-              ],
-              selected: {_mode},
-              onSelectionChanged: _loading
-                  ? null
-                  : (selection) => setState(() => _mode = selection.first),
-            ),
+            if (!_isContinuation)
+              SegmentedButton<AnalysisMode>(
+                segments: const [
+                  ButtonSegment(value: AnalysisMode.chat, label: Text("会話")),
+                  ButtonSegment(value: AnalysisMode.photo, label: Text("写真")),
+                ],
+                selected: {_mode},
+                onSelectionChanged: _loading
+                    ? null
+                    : (selection) => setState(() => _mode = selection.first),
+              ),
             if (_mode == AnalysisMode.chat) ...[
               const SizedBox(height: AppSpacing.md),
-              _PersonPickerCard(person: _selectedPerson, loading: _loading, onTap: _pickPerson),
+              _PersonPickerCard(
+                person: _selectedPerson,
+                loading: _loading,
+                onTap: _isContinuation ? null : _pickPerson,
+              ),
+            ],
+            if (widget.previousSummary != null) ...[
+              const SizedBox(height: AppSpacing.md),
+              _PreviousSummaryCard(summary: widget.previousSummary!),
             ],
             const SizedBox(height: AppSpacing.md),
             _ImagePickerSection(
@@ -225,7 +249,9 @@ class _HomeScreenState extends State<HomeScreen> {
 class _PersonPickerCard extends StatelessWidget {
   final Person? person;
   final bool loading;
-  final VoidCallback onTap;
+
+  /// null なら相手を変更できない(続きの分析)。
+  final VoidCallback? onTap;
 
   const _PersonPickerCard({required this.person, required this.loading, required this.onTap});
 
@@ -248,9 +274,34 @@ class _PersonPickerCard extends StatelessWidget {
                   style: textTheme.bodyMedium,
                 ),
               ),
-              const Icon(Icons.chevron_right, color: AppColors.textSecondary),
+              if (onTap != null) const Icon(Icons.chevron_right, color: AppColors.textSecondary),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 続きの分析で引き継ぐ前回の要約。何が送られるかを送信前に見せる(docs/requirements.md 3.3節)。
+class _PreviousSummaryCard extends StatelessWidget {
+  final String summary;
+
+  const _PreviousSummaryCard({required this.summary});
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text("前回の分析から引き継ぐ内容", style: textTheme.titleMedium),
+            const SizedBox(height: AppSpacing.xs),
+            Text(summary, style: textTheme.bodySmall),
+          ],
         ),
       ),
     );

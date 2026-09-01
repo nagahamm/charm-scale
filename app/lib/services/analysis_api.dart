@@ -41,6 +41,24 @@ class AnalysisApiException implements Exception {
   String toString() => message;
 }
 
+/// POST /api/analyse に送るリクエストボディ。
+/// person_id と previous_summary は会話モードでのみ意味を持つ(docs/design.md 4.2節)。
+Map<String, Object?> buildAnalysisRequestBody({
+  required AnalysisMode mode,
+  required List<PickedImage> images,
+  List<PickedImage> profileImages = const [],
+  String context = "",
+  String? personId,
+  String? previousSummary,
+}) => {
+      "mode": mode.apiValue,
+      "images": images.map((i) => i.toJson()).toList(),
+      "profile_images": profileImages.map((i) => i.toJson()).toList(),
+      "context": context,
+      if (mode == AnalysisMode.chat && personId != null) "person_id": personId,
+      if (mode == AnalysisMode.chat && previousSummary != null) "previous_summary": previousSummary,
+    };
+
 class AnalysisApiService {
   final http.Client _client;
 
@@ -52,13 +70,15 @@ class AnalysisApiService {
     List<PickedImage> profileImages = const [],
     String context = "",
     String? personId,
-  }) => _stream({
-        "mode": mode.apiValue,
-        "images": images.map((i) => i.toJson()).toList(),
-        "profile_images": profileImages.map((i) => i.toJson()).toList(),
-        "context": context,
-        if (personId != null) "person_id": personId,
-      });
+    String? previousSummary,
+  }) => _stream(buildAnalysisRequestBody(
+        mode: mode,
+        images: images,
+        profileImages: profileImages,
+        context: context,
+        personId: personId,
+        previousSummary: previousSummary,
+      ));
 
   Stream<AnalysisEvent> streamDraftCheck({
     required List<PickedImage> images,

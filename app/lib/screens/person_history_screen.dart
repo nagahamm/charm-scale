@@ -5,6 +5,7 @@ import "../models/person.dart";
 import "../services/history_api.dart";
 import "../theme.dart";
 import "../widgets/trend_chart.dart";
+import "home_screen.dart";
 import "result_screen.dart";
 
 /// 特定の Person(相手)の分析履歴一覧(docs/requirements.md 4.2節)。
@@ -20,6 +21,7 @@ class _PersonHistoryScreenState extends State<PersonHistoryScreen> {
   final _api = HistoryApiService();
   late Future<List<AnalysisSummary>> _future;
   String? _openingId;
+  bool _continuing = false;
 
   @override
   void initState() {
@@ -50,6 +52,30 @@ class _PersonHistoryScreenState extends State<PersonHistoryScreen> {
       );
     } finally {
       if (mounted) setState(() => _openingId = null);
+    }
+  }
+
+  /// 直前の分析の要約を引き継いで、続きのスクショで分析する(docs/requirements.md 3.3節)。
+  Future<void> _continueFromLatest(List<AnalysisSummary> analyses) async {
+    setState(() => _continuing = true);
+    try {
+      final latest = await _api.fetchChatDetail(latestOf(analyses).id);
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => HomeScreen(continuingPerson: widget.person, previousSummary: latest.summary),
+        ),
+      );
+      if (!mounted) return;
+      // 新しい分析が一覧・推移グラフに反映されるよう取り直す。
+      setState(() => _future = _api.fetchAnalyses(widget.person.id));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e is HistoryApiException ? e.message : "読み込みに失敗しました。")),
+      );
+    } finally {
+      if (mounted) setState(() => _continuing = false);
     }
   }
 
@@ -86,6 +112,20 @@ class _PersonHistoryScreenState extends State<PersonHistoryScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 if (scored.length >= 2) _TrendSection(analyses: scored),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
+                  child: FilledButton.icon(
+                    onPressed: _continuing ? null : () => _continueFromLatest(analyses),
+                    icon: _continuing
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Icon(Icons.add_photo_alternate_outlined),
+                    label: const Text("続きのスクショで分析"),
+                  ),
+                ),
                 Expanded(child: _buildList(analyses)),
               ],
             );
@@ -152,6 +192,10 @@ class _PersonHistoryScreenState extends State<PersonHistoryScreen> {
     );
   }
 }
+
+/// 最新の分析(APIのレスポンス順に依存せず created_at で判断する)。
+AnalysisSummary latestOf(List<AnalysisSummary> analyses) =>
+    analyses.reduce((a, b) => b.createdAt.isAfter(a.createdAt) ? b : a);
 
 /// 食いつき度数を持つ分析だけを、古い順に並べ替えて返す(推移グラフ用)。
 /// APIのレスポンス順に依存しないよう created_at で整列する。
