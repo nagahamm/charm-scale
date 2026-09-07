@@ -59,4 +59,30 @@ void main() {
       expect(summary.createdAt, DateTime.parse("2026-08-15T00:00:00Z"));
     });
   });
+
+  group("FeedbackOverview.fromJson", () {
+    test("parses per-mode counts, trend, and metric averages", () {
+      final json = {
+        "chat": {
+          "count": 2,
+          "trend": [40, 60],
+          "metrics": [
+            {"key": "reply_speed", "label": "返信速度", "score": 72, "count": 2},
+          ],
+        },
+        "photo": {"count": 0, "trend": [], "metrics": []},
+      };
+
+      final overview = FeedbackOverview.fromJson(json);
+
+      expect(overview.chat.count, 2);
+      expect(overview.chat.trend, [40, 60]);
+      expect(overview.chat.metrics.single.label, "返信速度");
+      expect(overview.chat.metrics.single.score, 72);
+      expect(overview.chat.metrics.single.count, 2);
+      expect(overview.photo.count, 0);
+      expect(overview.photo.trend, isEmpty);
+      expect(overview.photo.metrics, isEmpty);
+    });
+  });
 }

@@ -73,6 +73,11 @@ class HistoryApiService {
             .toList(),
       );
 
+  Future<FeedbackOverview> fetchOverview() => _send(
+        () => _client.get(_uri("overview"), headers: _headers()),
+        (body) => FeedbackOverview.fromJson(body as Map<String, dynamic>),
+      );
+
   Future<ChatResult> fetchChatDetail(String analysisId) => _send(
         () => _client.get(_uri("detail", {"analysis_id": analysisId}), headers: _headers()),
         (body) => ChatResult.fromJson(body as Map<String, dynamic>),

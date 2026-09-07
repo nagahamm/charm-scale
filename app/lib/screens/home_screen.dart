@@ -8,6 +8,7 @@ import "../services/analysis_api.dart";
 import "../services/auth_service.dart";
 import "../services/image_prep.dart";
 import "../theme.dart";
+import "overall_feedback_screen.dart";
 import "person_list_screen.dart";
 import "result_screen.dart";
 
@@ -147,6 +148,15 @@ class _HomeScreenState extends State<HomeScreen> {
                   ? null
                   : () => Navigator.of(context)
                       .push(MaterialPageRoute(builder: (_) => const PersonListScreen())),
+            ),
+          if (isSupabaseConfigured && !_isContinuation)
+            IconButton(
+              icon: const Icon(Icons.insights_outlined),
+              tooltip: "全体フィードバック",
+              onPressed: _loading
+                  ? null
+                  : () => Navigator.of(context)
+                      .push(MaterialPageRoute(builder: (_) => const OverallFeedbackScreen())),
             ),
           if (isSupabaseConfigured && !_isContinuation)
             IconButton(

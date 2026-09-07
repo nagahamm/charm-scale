@@ -47,3 +47,48 @@ class Person {
             : AnalysisSummary.fromJson(json["latest"] as Map<String, dynamic>),
       );
 }
+
+/// 項目別スコアの平均(docs/design.md 4.3節)。1件の Analysis の Metric とは違い
+/// 個別のコメントを持たず、平均元の件数(count)を持つ。
+class MetricAverage {
+  final String label;
+  final int score;
+  final int count;
+
+  const MetricAverage({required this.label, required this.score, required this.count});
+
+  factory MetricAverage.fromJson(Map<String, dynamic> json) => MetricAverage(
+        label: json["label"] as String,
+        score: json["score"] as int,
+        count: json["count"] as int,
+      );
+}
+
+/// 全体的なフィードバックのうち、chat または photo いずれか片方のモード分。
+class ModeFeedback {
+  final int count;
+  final List<int> trend;
+  final List<MetricAverage> metrics;
+
+  const ModeFeedback({required this.count, required this.trend, required this.metrics});
+
+  factory ModeFeedback.fromJson(Map<String, dynamic> json) => ModeFeedback(
+        count: json["count"] as int,
+        trend: (json["trend"] as List).cast<int>(),
+        metrics:
+            (json["metrics"] as List).map((e) => MetricAverage.fromJson(e as Map<String, dynamic>)).toList(),
+      );
+}
+
+/// Person をまたいだ全体的なフィードバック(docs/requirements.md 3.5節)。
+class FeedbackOverview {
+  final ModeFeedback chat;
+  final ModeFeedback photo;
+
+  const FeedbackOverview({required this.chat, required this.photo});
+
+  factory FeedbackOverview.fromJson(Map<String, dynamic> json) => FeedbackOverview(
+        chat: ModeFeedback.fromJson(json["chat"] as Map<String, dynamic>),
+        photo: ModeFeedback.fromJson(json["photo"] as Map<String, dynamic>),
+      );
+}
