@@ -300,10 +300,22 @@ $$;
 - **続きのスクショで分析を更新する**: 導線は履歴画面に置き、分析画面は `HomeScreen` を「相手固定・会話モード固定」で再利用する(画像選択UIを二重に作らない、DRY)。直前の分析の要約は既存の `resource=detail` から取得し、`POST /api/analyse` の `previous_summary`(chat モードのみ、2000文字で切り詰め)として渡す。利用者申告の `context` とは別フィールドにして、プロンプトでも「このアプリが以前生成した要約」と位置づけを明示する(出所を混ぜない)。スクショに写っていない過去のやり取りは要約で補うが、スクショから読み取れる事実を優先させる。解析結果は既存の永続化経路でその相手の新しい Analysis として保存されるため、保存側の変更は不要。
 - JSON の組み立ては Postgres の関数/ビューではなく、`analyses.mjs` 内の Node.js コードで行う(複数テーブルへの問い合わせ結果をJSにそのまま組み立てるだけなので、PL/pgSQLを新たに書く必要性が薄い。KISS)。
 
-### 4.3 全体的なフィードバック
+### 4.3 全体的なフィードバック(#18)
 
-- 特定の Person に紐づかない、User 全体のダッシュボード画面を追加する。
-- 表示内容は `analyses.result` から項目別スコアの平均・推移を計算する(クライアント側で集計。専用の集計テーブルは持たない)。
+- 特定の Person に紐づかない、User 全体のダッシュボード画面を追加する。対象は chat/photo の Analysis(4.2節と異なり Person をまたいで集計する)。
+- `GET /api/analyses?resource=overview` を追加する(`analyses.mjs`)。mode(chat/photo)ごとに以下を1回のリクエストで返す。専用の集計テーブルは持たず、都度 `analyses` / `analysis_metrics` から集計する(2節・YAGNI)。
+  - `count`: その mode の Analysis 件数。
+  - `trend`: `interest_score` を `created_at` 昇順に並べた配列(Person をまたぐ)。既存の `TrendChart`(3.3節と同じ部品)にそのまま渡せる形にする。
+  - `metrics`: 項目別スコアの平均。`analysis_metrics` を `analyses!inner(mode, user_id)` で絞り込み、`key` ごとに平均値(四捨五入)と件数を JS 側で集計する(1テーブルの単純な平均なので PL/pgSQL 関数は起こさない。KISS)。`label` は `analysis_metrics` に保存済みの日本語ラベルをそのまま使う(Flutter 側の `ChatMetrics.labeled` 等とは二重管理になるが、DB保存時に確定した表示名を正とする)。
+  - 集計対象は `user_id = 該当ユーザー` のみ(RLSに頼らずアプリ側で必ず絞り込む。4.2節と同じ方針)。
+- レスポンス例:
+  ```json
+  {
+    "chat": { "count": 12, "trend": [40, 55, 60], "metrics": [{ "key": "reply_speed", "label": "返信速度", "score": 72, "count": 12 }] },
+    "photo": { "count": 3, "trend": [50, 60, 65], "metrics": [{ "key": "first_impression", "label": "第一印象", "score": 68, "count": 3 } ] }
+  }
+  ```
+- 画面は `count == 0` の mode を「まだ分析がありません」表示にし、`trend.length < 2` では `TrendChart` 自身が何も描画しない(3.3節と同じ挙動を再利用)。
 - 個々の会話内容やメッセージ本文は出さず、スコアの傾向のみを見せる(要件定義 5節のプライバシー方針)。
 
 ### 4.4 利用制限
