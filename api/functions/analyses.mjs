@@ -13,6 +13,8 @@ const METRIC_KEYS_CHAT = [
   "initiative",
 ];
 
+const METRIC_KEYS_PHOTO = ["first_impression", "overall_impression_consistency"];
+
 const json = (status, body) =>
   new Response(JSON.stringify(body), {
     status,
@@ -141,6 +143,55 @@ const buildChatDetail = async (client, userId, analysisId) => {
   };
 };
 
+// docs/design.md 4.3節: Person をまたいだ全体的なフィードバック。専用の集計テーブルは持たず都度集計する。
+// 取得済みの行から集計するだけの純粋関数として切り出し、Supabaseクライアント無しでテストできるようにする。
+export const aggregateOverview = (analysesRows, metricsRows) => {
+  const forMode = (mode, metricKeys) => {
+    const analyses = analysesRows.filter((a) => a.mode === mode);
+    const trend = analyses.filter((a) => a.interest_score != null).map((a) => a.interest_score);
+
+    const totals = new Map();
+    for (const row of metricsRows) {
+      if (row.analyses.mode !== mode) continue;
+      const entry = totals.get(row.key) ?? { label: row.label, sum: 0, count: 0 };
+      entry.sum += row.score;
+      entry.count += 1;
+      totals.set(row.key, entry);
+    }
+    const metrics = metricKeys
+      .filter((key) => totals.has(key))
+      .map((key) => {
+        const entry = totals.get(key);
+        return { key, label: entry.label, score: Math.round(entry.sum / entry.count), count: entry.count };
+      });
+
+    return { count: analyses.length, trend, metrics };
+  };
+
+  return {
+    chat: forMode("chat", METRIC_KEYS_CHAT),
+    photo: forMode("photo", METRIC_KEYS_PHOTO),
+  };
+};
+
+const buildOverview = async (client, userId) => {
+  const [analysesRes, metricsRes] = await Promise.all([
+    client
+      .from("analyses")
+      .select("mode, interest_score, created_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: true }),
+    client
+      .from("analysis_metrics")
+      .select("key, label, score, analyses!inner(mode, user_id)")
+      .eq("analyses.user_id", userId),
+  ]);
+  if (analysesRes.error) throw analysesRes.error;
+  if (metricsRes.error) throw metricsRes.error;
+
+  return aggregateOverview(analysesRes.data, metricsRes.data);
+};
+
 export default async (req) => {
   const auth = await verifyUser(req.headers.get("authorization"));
   if (auth.status !== AUTH_OK) return json(401, { error: "ログインが必要です。" });
@@ -182,6 +233,10 @@ export default async (req) => {
       const personId = url.searchParams.get("person_id");
       if (!personId) return json(400, { error: "person_id が指定されていません。" });
       return json(200, { analyses: await listAnalyses(client, auth.userId, personId) });
+    }
+
+    if (req.method === "GET" && resource === "overview") {
+      return json(200, await buildOverview(client, auth.userId));
     }
 
     if (req.method === "GET" && resource === "detail") {
