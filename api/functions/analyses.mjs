@@ -64,6 +64,8 @@ const listAnalyses = async (client, userId, personId) => {
   return data;
 };
 
+const toRewrite = (r) => (r ? { issue: r.issue, improved: r.improved_candidates, reason: r.reason } : null);
+
 // 正規化テーブル群から CHAT_SCHEMA(api/functions/analyse.mjs)と同じ形のJSONを組み立てる。
 // mode が chat 以外(または見つからない・他人のもの)の場合は null を返す。
 const buildChatDetail = async (client, userId, analysisId) => {
@@ -105,18 +107,13 @@ const buildChatDetail = async (client, userId, analysisId) => {
   }
 
   const rewriteByTimelineId = new Map(rewrites.data.map((r) => [r.timeline_entry_id, r]));
-  const timelineEntries = timeline.data.map((entry) => {
-    const rewrite = rewriteByTimelineId.get(entry.id);
-    return {
-      speaker: entry.speaker,
-      excerpt: entry.excerpt,
-      interest: entry.interest,
-      note: entry.note,
-      rewrite: rewrite
-        ? { issue: rewrite.issue, improved: rewrite.improved_candidates, reason: rewrite.reason }
-        : null,
-    };
-  });
+  const timelineEntries = timeline.data.map((entry) => ({
+    speaker: entry.speaker,
+    excerpt: entry.excerpt,
+    interest: entry.interest,
+    note: entry.note,
+    rewrite: toRewrite(rewriteByTimelineId.get(entry.id)),
+  }));
 
   return {
     headline: analysis.headline,
@@ -141,6 +138,57 @@ const buildChatDetail = async (client, userId, analysisId) => {
     bad_points: analysis.bad_points,
     next_moves: nextMoves.data,
   };
+};
+
+// docs/design.md 4.2節「相手ごとの通し会話」(#20): その Person の chat Analysis すべての
+// timeline を analyses.created_at 昇順→position 昇順で連結する。next_moves・profile・metrics 等
+// 単一の Analysis に紐づく情報はここでは組み立てない(それらは resource=detail の責務)。
+const buildThread = async (client, userId, personId) => {
+  const { data: analyses, error: analysesError } = await client
+    .from("analyses")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("person_id", personId)
+    .eq("mode", "chat")
+    .order("created_at", { ascending: true });
+  if (analysesError) throw analysesError;
+  if (analyses.length === 0) return { timeline: [] };
+
+  const analysisIds = analyses.map((a) => a.id);
+  const [timelineRes, rewritesRes] = await Promise.all([
+    client
+      .from("analysis_timeline_entries")
+      .select("id, analysis_id, position, speaker, excerpt, interest, note")
+      .in("analysis_id", analysisIds),
+    client
+      .from("analysis_rewrites")
+      .select("timeline_entry_id, issue, improved_candidates, reason")
+      .in("analysis_id", analysisIds),
+  ]);
+  if (timelineRes.error) throw timelineRes.error;
+  if (rewritesRes.error) throw rewritesRes.error;
+
+  const rewriteByTimelineId = new Map(rewritesRes.data.map((r) => [r.timeline_entry_id, r]));
+  const entriesByAnalysis = new Map();
+  for (const entry of timelineRes.data) {
+    const list = entriesByAnalysis.get(entry.analysis_id) ?? [];
+    list.push(entry);
+    entriesByAnalysis.set(entry.analysis_id, list);
+  }
+
+  const timeline = analysisIds.flatMap((analysisId) =>
+    (entriesByAnalysis.get(analysisId) ?? [])
+      .sort((a, b) => a.position - b.position)
+      .map((entry) => ({
+        speaker: entry.speaker,
+        excerpt: entry.excerpt,
+        interest: entry.interest,
+        note: entry.note,
+        rewrite: toRewrite(rewriteByTimelineId.get(entry.id)),
+      }))
+  );
+
+  return { timeline };
 };
 
 // docs/design.md 4.3節: Person をまたいだ全体的なフィードバック。専用の集計テーブルは持たず都度集計する。
@@ -233,6 +281,12 @@ export default async (req) => {
       const personId = url.searchParams.get("person_id");
       if (!personId) return json(400, { error: "person_id が指定されていません。" });
       return json(200, { analyses: await listAnalyses(client, auth.userId, personId) });
+    }
+
+    if (req.method === "GET" && resource === "thread") {
+      const personId = url.searchParams.get("person_id");
+      if (!personId) return json(400, { error: "person_id が指定されていません。" });
+      return json(200, await buildThread(client, auth.userId, personId));
     }
 
     if (req.method === "GET" && resource === "overview") {

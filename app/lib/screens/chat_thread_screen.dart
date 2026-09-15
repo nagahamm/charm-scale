@@ -5,6 +5,8 @@ import "../models/analysis.dart";
 import "../services/analysis_api.dart";
 import "../services/image_prep.dart";
 import "../theme.dart";
+import "../widgets/candidate_card.dart";
+import "../widgets/message_bubble.dart";
 
 /// 会話の再現(吹き出し)・次に送る返信案・自分で書いてチェック。
 /// ResultScreen(分析結果)から「会話を見る」で遷移する。
@@ -75,7 +77,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                   style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
                 ),
               ),
-              for (final entry in result.timeline) _MessageBubble(entry: entry),
+              for (final entry in result.timeline) MessageBubble(entry: entry),
             ],
             if (result.nextMoves.isNotEmpty) ...[
               Padding(
@@ -188,78 +190,8 @@ class _DraftCheckResultView extends StatelessWidget {
         for (final candidate in result.candidates)
           Padding(
             padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-            child: _CandidateCard(text: candidate),
+            child: CandidateCard(text: candidate),
           ),
-      ],
-    );
-  }
-}
-
-/// タップでクリップボードにコピーし、カード自体がコピー済み表示に切り替わる
-/// (docs/requirements.md 3.1節: SnackBarのような一時的な通知ではなく、恒常的な状態表示にする)。
-class _CandidateCard extends StatefulWidget {
-  final String text;
-  const _CandidateCard({required this.text});
-
-  @override
-  State<_CandidateCard> createState() => _CandidateCardState();
-}
-
-class _CandidateCardState extends State<_CandidateCard> {
-  bool _copied = false;
-
-  Future<void> _copy() async {
-    await Clipboard.setData(ClipboardData(text: widget.text));
-    if (mounted) setState(() => _copied = true);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    return InkWell(
-      borderRadius: BorderRadius.circular(AppSpacing.sm),
-      onTap: _copy,
-      child: Container(
-        padding: const EdgeInsets.all(AppSpacing.sm),
-        decoration: BoxDecoration(
-          color: AppColors.background,
-          border: Border.all(color: _copied ? AppColors.primary : AppColors.border),
-          borderRadius: BorderRadius.circular(AppSpacing.sm),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Text(widget.text, style: textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
-            ),
-            const SizedBox(width: AppSpacing.sm),
-            _CopiedIndicator(copied: _copied),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _CopiedIndicator extends StatelessWidget {
-  final bool copied;
-  const _CopiedIndicator({required this.copied});
-
-  @override
-  Widget build(BuildContext context) {
-    if (!copied) return const Icon(Icons.copy_outlined, size: 20, color: AppColors.textSecondary);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        const Icon(Icons.check_circle, size: 16, color: AppColors.primary),
-        const SizedBox(width: 4),
-        Text(
-          "コピー済み",
-          style: Theme.of(context)
-              .textTheme
-              .bodySmall
-              ?.copyWith(color: AppColors.primary, fontWeight: FontWeight.bold),
-        ),
       ],
     );
   }
@@ -307,7 +239,7 @@ class _NextMoveCardState extends State<_NextMoveCard> {
                     ),
                   ),
                   const SizedBox(width: AppSpacing.sm),
-                  _CopiedIndicator(copied: _copied),
+                  CopiedIndicator(copied: _copied),
                 ],
               ),
               const SizedBox(height: AppSpacing.xs),
@@ -320,125 +252,3 @@ class _NextMoveCardState extends State<_NextMoveCard> {
   }
 }
 
-class _MessageBubble extends StatelessWidget {
-  final TimelineEntry entry;
-  const _MessageBubble({required this.entry});
-
-  @override
-  Widget build(BuildContext context) {
-    final isSelf = entry.speaker == Speaker.self_;
-    final hasRewrite = entry.rewrite != null;
-    final bubble = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: isSelf ? AppColors.primary : AppColors.surface,
-        border: isSelf ? null : Border.all(color: AppColors.border),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            entry.excerpt,
-            style: TextStyle(
-              color: isSelf ? Colors.white : AppColors.textPrimary,
-              fontSize: 14,
-              height: 1.4,
-            ),
-          ),
-          if (hasRewrite) ...[
-            const SizedBox(height: 6),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.edit_note, size: 14, color: isSelf ? Colors.white : AppColors.primary),
-                const SizedBox(width: 3),
-                Text(
-                  "もっとこうすべきだった",
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: isSelf ? Colors.white : AppColors.primary,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ],
-      ),
-    );
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        mainAxisAlignment: isSelf ? MainAxisAlignment.end : MainAxisAlignment.start,
-        children: [
-          Flexible(
-            child: hasRewrite
-                ? InkWell(
-                    borderRadius: BorderRadius.circular(16),
-                    onTap: () => _showRewriteSheet(context, entry),
-                    child: bubble,
-                  )
-                : bubble,
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showRewriteSheet(BuildContext context, TimelineEntry entry) {
-    final rewrite = entry.rewrite!;
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(AppSpacing.radius)),
-      ),
-      builder: (context) {
-        final textTheme = Theme.of(context).textTheme;
-        return FractionallySizedBox(
-          heightFactor: 0.85,
-          child: Padding(
-            padding: const EdgeInsets.all(AppSpacing.md),
-            child: ListView(
-              children: [
-                Center(
-                  child: Container(
-                    width: 36,
-                    height: 4,
-                    margin: const EdgeInsets.only(bottom: AppSpacing.md),
-                    decoration: BoxDecoration(
-                      color: AppColors.border,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                Text("送った文", style: textTheme.bodySmall),
-                const SizedBox(height: AppSpacing.xs),
-                Text(entry.excerpt, style: textTheme.bodyMedium?.copyWith(color: AppColors.textSecondary)),
-                const SizedBox(height: AppSpacing.md),
-                Text("問題点", style: textTheme.bodySmall),
-                const SizedBox(height: AppSpacing.xs),
-                Text(rewrite.issue, style: textTheme.bodyMedium),
-                const SizedBox(height: AppSpacing.md),
-                Text("返信案", style: textTheme.bodySmall),
-                const SizedBox(height: AppSpacing.xs),
-                for (final candidate in rewrite.improved)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-                    child: _CandidateCard(text: candidate),
-                  ),
-                const SizedBox(height: AppSpacing.sm),
-                Text("理由", style: textTheme.bodySmall),
-                const SizedBox(height: AppSpacing.xs),
-                Text(rewrite.reason, style: textTheme.bodyMedium),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-}

@@ -73,6 +73,11 @@ class HistoryApiService {
             .toList(),
       );
 
+  Future<PersonThread> fetchThread(String personId) => _send(
+        () => _client.get(_uri("thread", {"person_id": personId}), headers: _headers()),
+        (body) => PersonThread.fromJson(body as Map<String, dynamic>),
+      );
+
   Future<FeedbackOverview> fetchOverview() => _send(
         () => _client.get(_uri("overview"), headers: _headers()),
         (body) => FeedbackOverview.fromJson(body as Map<String, dynamic>),

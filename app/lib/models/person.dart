@@ -1,6 +1,8 @@
 /// api/functions/analyses.mjs のレスポンスに対応するモデル群(docs/design.md 4.2節)。
 library;
 
+import "analysis.dart";
+
 class AnalysisSummary {
   final String id;
   final String headline;
@@ -45,6 +47,20 @@ class Person {
         latest: json["latest"] == null
             ? null
             : AnalysisSummary.fromJson(json["latest"] as Map<String, dynamic>),
+      );
+}
+
+/// 相手ごとの通し会話(docs/requirements.md 3.3節「相手ごとの通し会話」、design.md 4.2節)。
+/// 複数の Analysis の timeline を日時順に連結したもの。next_moves 等は含まない。
+class PersonThread {
+  final List<TimelineEntry> timeline;
+
+  const PersonThread({required this.timeline});
+
+  factory PersonThread.fromJson(Map<String, dynamic> json) => PersonThread(
+        timeline: (json["timeline"] as List)
+            .map((e) => TimelineEntry.fromJson(e as Map<String, dynamic>))
+            .toList(),
       );
 }
 
