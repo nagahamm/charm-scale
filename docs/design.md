@@ -52,8 +52,9 @@ User (1) ─────────────────(N) Analysis (mode =
 ```
 
 - **User**: アプリのアカウント本人。Supabase Auth が発行する `auth.users` をそのまま使う(アプリ独自の users テーブルは持たない)。
-- **Person**: User が管理する「相手」。会話モード(chat)は特定の相手とのやり取りなので Person に紐づく。写真モード(photo)は相談者自身のプロフィール写真の評価であり、相手は存在しないため Person を持たない。User 以外の第三者の個人情報を含みうるため、User が削除すれば配下の Analysis も連鎖削除される。
-- **Analysis**: 1回の解析結果。`mode`(chat/photo)ごとに、`api/functions/analyse.mjs` の既存レスポンススキーマ(CHAT_SCHEMA / PHOTO_SCHEMA)を正規化テーブル群に分解して保存する(3節)。`person_id` は chat のみ必須、photo は null。分解前の生データは `analysis_raw_logs` に別途残す(1.1節)ので、正規化スキーマを将来変更しても過去の生データは失われない。
+- **Person**: User が管理する「相手」。会話モード(chat)は特定の相手とのやり取りなので Person に紐づく。写真モード(photo)は相談者自身のプロフィール写真の評価であり、相手は存在しないため Person を持たない。User 以外の第三者の個人情報を含みうるため、User が削除すれば配下の Analysis も連鎖削除される。Person 単位で利用者自身の振り返りメモ(`memo`)を1本持てる(4.2節)。
+- **Analysis**: 1回の解析結果。`mode`(chat/photo)ごとに、`api/functions/analyse.mjs` の既存レスポンススキーマ(CHAT_SCHEMA / PHOTO_SCHEMA)を正規化テーブル群に分解して保存する(3節)。`person_id` は chat のみ必須、photo は null。分解前の生データは `analysis_raw_logs` に別途残す(1.1節)ので、正規化スキーマを将来変更しても過去の生データは失われない。同じ Person に紐づく複数の Analysis の Timeline entry は、日時順に連結して1本の会話として読み返せる(4.2節「通し会話」)。
+- **Timeline entry への利用者メモ**: 個々の発言(Timeline entry)にも、利用者自身の振り返りメモを付けられる。AIが生成する `note`(発言ごとの一言コメント)とは別物として管理する(4.2節)。
 
 集計(全体的なフィードバック)や利用回数は、独立した集計テーブルを持たず `analyses` 系テーブル・`usage_counters` への都度クエリで導出する。専用の集計テーブルは、実際にパフォーマンス上の問題が出てから検討する(YAGNI)。
 
@@ -67,6 +68,7 @@ create table persons (
   id          uuid primary key default gen_random_uuid(),
   user_id     uuid not null references auth.users(id) on delete cascade,
   nickname    text not null,             -- User が自分でつけるニックネーム(相手の本名は保存しない)
+  memo        text not null default '',  -- 利用者自身の振り返りメモ(AI生成データとは別管理、4.2節)
   created_at  timestamptz not null default now()
 );
 
@@ -162,6 +164,14 @@ create table analysis_positioning (
   disclaimer   text not null
 );
 
+-- 発言(timeline_entry)ごとの利用者メモ。AI生成の analysis_timeline_entries.note とは別管理。
+-- 未記入の発言については行自体を作らない(1:1だが疎なデータなので、空文字ではなく行の有無で判定する)。
+create table timeline_entry_notes (
+  timeline_entry_id  uuid primary key references analysis_timeline_entries(id) on delete cascade,
+  note                text not null,
+  updated_at          timestamptz not null default now()
+);
+
 -- Rawログ: 検証前のAI生出力をそのまま保存(画像は含めない)
 create table analysis_raw_logs (
   id            uuid primary key default gen_random_uuid(),
@@ -186,6 +196,7 @@ create index analysis_rewrites_analysis_idx on analysis_rewrites (analysis_id);
 create index analysis_next_moves_analysis_idx on analysis_next_moves (analysis_id);
 create index analysis_photos_analysis_idx on analysis_photos (analysis_id, position);
 create index analysis_raw_logs_user_idx on analysis_raw_logs (user_id, created_at desc);
+create index timeline_entry_notes_entry_idx on timeline_entry_notes (timeline_entry_id);
 ```
 
 Row Level Security: すべてのテーブルで有効化する。`analyses` 以外の子テーブルは `user_id` 列を持たないため、`analyses` への参照を介したポリシーにする。
@@ -202,6 +213,7 @@ alter table analysis_photos enable row level security;
 alter table analysis_positioning enable row level security;
 alter table analysis_raw_logs enable row level security;
 alter table usage_counters enable row level security;
+alter table timeline_entry_notes enable row level security;
 
 create policy "own persons" on persons
   for all using (auth.uid() = user_id);
@@ -234,6 +246,15 @@ create policy "own raw logs (read only)" on analysis_raw_logs
 create policy "own usage" on usage_counters
   for select using (auth.uid() = user_id);
 -- usage_counters への insert/update も Service Role(analyse.mjs)からのみ。
+
+create policy "own timeline_entry_notes" on timeline_entry_notes
+  for all using (
+    exists (
+      select 1 from analysis_timeline_entries e
+      join analyses a on a.id = e.analysis_id
+      where e.id = timeline_entry_id and a.user_id = auth.uid()
+    )
+  );
 
 -- 当日カウントの加算(0003_increment_usage_counter.sql)。
 -- 同一ユーザーの解析が同時に走っても取りこぼさないよう、1文で原子的に加算する。
@@ -299,6 +320,12 @@ $$;
 - **食いつき度数の推移グラフ**: `GET …?resource=list` が既に返している `interest_score` / `created_at` をそのまま使い、API は変更しない。`PersonHistoryScreen` が `created_at` の昇順に整列して `TrendChart` に渡す(レスポンスの並び順に依存しない)。`TrendChart` は1回の分析内の `timeline` の推移にも、分析をまたいだ推移にも使うため、`List<int>` を受け取る汎用の折れ線部品とする(部品はロジックを持たない、という責務に合わせる)。
 - **続きのスクショで分析を更新する**: 導線は履歴画面に置き、分析画面は `HomeScreen` を「相手固定・会話モード固定」で再利用する(画像選択UIを二重に作らない、DRY)。直前の分析の要約は既存の `resource=detail` から取得し、`POST /api/analyse` の `previous_summary`(chat モードのみ、2000文字で切り詰め)として渡す。利用者申告の `context` とは別フィールドにして、プロンプトでも「このアプリが以前生成した要約」と位置づけを明示する(出所を混ぜない)。スクショに写っていない過去のやり取りは要約で補うが、スクショから読み取れる事実を優先させる。解析結果は既存の永続化経路でその相手の新しい Analysis として保存されるため、保存側の変更は不要。
 - JSON の組み立ては Postgres の関数/ビューではなく、`analyses.mjs` 内の Node.js コードで行う(複数テーブルへの問い合わせ結果をJSにそのまま組み立てるだけなので、PL/pgSQLを新たに書く必要性が薄い。KISS)。
+- **相手ごとの通し会話(#20)**: `GET /api/analyses?resource=thread&person_id=...` を追加する。その Person の chat Analysis すべてについて `analyses.created_at` 昇順で取得し、各 Analysis の `analysis_timeline_entries` を `position` 昇順で連結して1本の配列にする(`analysis_rewrites`・`timeline_entry_notes` も同様に結合する)。「次に送る返信案」・プロフィール・項目別スコアなど単一の Analysis に紐づく情報はこのエンドポイントでは返さない(それらは既存の `resource=detail` で最新の分析結果画面から確認する。責務を混ぜない)。アプリ側は新画面 `PersonThreadScreen` でこの配列をそのまま吹き出し表示する。添削(rewrite)付きメッセージのタップ動作は `ChatThreadScreen` の `_MessageBubble` を共通ウィジェットとして切り出して再利用する(DRY)。
+- **利用者自身のメモ(#21)**: Person単位・メッセージ(Timeline entry)単位の両方に、利用者自身が書く振り返りメモを持てる。AIが生成する `nickname` は変えない/`analysis_timeline_entries.note` とは独立したデータとして扱う(ドメイン用語集に照らして、AIの出力と利用者の入力を混同しない)。
+  - `PATCH /api/analyses?resource=persons&person_id=...` body `{ memo }` — `persons.memo` を更新する。文字数上限は1000文字とする(下書きの `context` 等、既存の自由入力欄と同程度の上限)。
+  - `PATCH /api/analyses?resource=message_note&entry_id=...` body `{ note }` — `timeline_entry_notes` を upsert する。`note` が空文字の場合は行を削除する(未記入の状態に戻す)。`entry_id` が該当ユーザーの Analysis に属することを、`analysis_timeline_entries` → `analyses.user_id` の結合で確認してから書き込む(他ユーザーの Timeline entry を更新できないようにする)。
+  - `resource=detail`・`resource=thread` のレスポンスに含まれる各 Timeline entry には `id`(`analysis_timeline_entries.id`)と `user_note`(未記入なら `null`)を含める。アプリはこの `id` を使って `resource=message_note` を呼ぶ。
+  - `resource=persons` のレスポンス(Person一覧)にも `memo` を含める(履歴画面でPersonを開いた直後に表示するため、別リクエストにしない)。
 
 ### 4.3 全体的なフィードバック(#18)
 
