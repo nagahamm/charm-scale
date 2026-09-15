@@ -6,12 +6,27 @@ import "candidate_card.dart";
 
 /// 会話の再現(吹き出し)。分析結果画面(ChatThreadScreen)と相手ごとの通し会話
 /// (PersonThreadScreen)の両方から使う共通部品(docs/design.md 4.2節「相手ごとの通し会話」)。
-class MessageBubble extends StatelessWidget {
+///
+/// entry.id が無い(まだ履歴に保存される前の、分析直後の結果)場合はメモを付けられない。
+/// onSaveNote が渡されなければメモの導線自体を出さない。
+class MessageBubble extends StatefulWidget {
   final TimelineEntry entry;
-  const MessageBubble({super.key, required this.entry});
+  final Future<void> Function(String entryId, String note)? onSaveNote;
+
+  const MessageBubble({super.key, required this.entry, this.onSaveNote});
+
+  @override
+  State<MessageBubble> createState() => _MessageBubbleState();
+}
+
+class _MessageBubbleState extends State<MessageBubble> {
+  late String? _userNote = widget.entry.userNote;
+
+  bool get _canEditNote => widget.entry.id != null && widget.onSaveNote != null;
 
   @override
   Widget build(BuildContext context) {
+    final entry = widget.entry;
     final isSelf = entry.speaker == Speaker.self_;
     final hasRewrite = entry.rewrite != null;
     final bubble = Container(
@@ -57,21 +72,112 @@ class MessageBubble extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        mainAxisAlignment: isSelf ? MainAxisAlignment.end : MainAxisAlignment.start,
+      child: Column(
+        crossAxisAlignment: isSelf ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
-          Flexible(
-            child: hasRewrite
-                ? InkWell(
-                    borderRadius: BorderRadius.circular(16),
-                    onTap: () => _showRewriteSheet(context, entry),
-                    child: bubble,
-                  )
-                : bubble,
+          Row(
+            mainAxisAlignment: isSelf ? MainAxisAlignment.end : MainAxisAlignment.start,
+            children: [
+              Flexible(
+                child: hasRewrite
+                    ? InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        onTap: () => _showRewriteSheet(context, entry),
+                        child: bubble,
+                      )
+                    : bubble,
+              ),
+            ],
           ),
+          if (_canEditNote) _buildNoteRow(),
         ],
       ),
     );
+  }
+
+  Widget _buildNoteRow() {
+    final hasNote = _userNote != null && _userNote!.isNotEmpty;
+    return Padding(
+      padding: const EdgeInsets.only(top: 2),
+      child: InkWell(
+        onTap: _editNote,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              hasNote ? Icons.sticky_note_2_outlined : Icons.note_add_outlined,
+              size: 13,
+              color: AppColors.textSecondary,
+            ),
+            const SizedBox(width: 3),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 220),
+              child: Text(
+                hasNote ? _userNote! : "メモを書く",
+                style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _editNote() async {
+    final controller = TextEditingController(text: _userNote ?? "");
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppSpacing.radius)),
+      ),
+      builder: (sheetContext) => Padding(
+        padding: EdgeInsets.only(
+          left: AppSpacing.md,
+          right: AppSpacing.md,
+          top: AppSpacing.md,
+          bottom: MediaQuery.of(sheetContext).viewInsets.bottom + AppSpacing.md,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text("このメッセージへのメモ", style: Theme.of(sheetContext).textTheme.titleMedium),
+            const SizedBox(height: AppSpacing.sm),
+            TextField(
+              controller: controller,
+              maxLines: 3,
+              autofocus: true,
+              decoration: const InputDecoration(
+                hintText: "例: このメッセージは失敗だった",
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton(
+                onPressed: () => Navigator.of(sheetContext).pop(controller.text.trim()),
+                child: const Text("保存"),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    controller.dispose();
+    if (result == null) return;
+    if (!mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await widget.onSaveNote!(widget.entry.id!, result);
+      if (mounted) setState(() => _userNote = result.isEmpty ? null : result);
+    } catch (_) {
+      if (!mounted) return;
+      messenger.showSnackBar(const SnackBar(content: Text("メモの保存に失敗しました。")));
+    }
   }
 
   void _showRewriteSheet(BuildContext context, TimelineEntry entry) {

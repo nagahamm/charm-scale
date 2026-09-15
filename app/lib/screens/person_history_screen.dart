@@ -85,68 +85,77 @@ class _PersonHistoryScreenState extends State<PersonHistoryScreen> {
     return Scaffold(
       appBar: AppBar(title: Text(widget.person.nickname)),
       body: SafeArea(
-        child: FutureBuilder<List<AnalysisSummary>>(
-          future: _future,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            if (snapshot.hasError) {
-              return Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(AppSpacing.lg),
-                  child: Text(
-                    snapshot.error is HistoryApiException
-                        ? (snapshot.error as HistoryApiException).message
-                        : "読み込みに失敗しました。",
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              );
-            }
-            final analyses = snapshot.data ?? const [];
-            if (analyses.isEmpty) {
-              return const Center(child: Padding(padding: EdgeInsets.all(AppSpacing.lg), child: Text("まだ分析がありません。")));
-            }
-            final scored = scoredInOrder(analyses);
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (scored.length >= 2) _TrendSection(analyses: scored),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
-                  child: Row(
+        child: Column(
+          children: [
+            _MemoSection(person: widget.person, api: _api),
+            Expanded(
+              child: FutureBuilder<List<AnalysisSummary>>(
+                future: _future,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState != ConnectionState.done) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (snapshot.hasError) {
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(AppSpacing.lg),
+                        child: Text(
+                          snapshot.error is HistoryApiException
+                              ? (snapshot.error as HistoryApiException).message
+                              : "読み込みに失敗しました。",
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    );
+                  }
+                  final analyses = snapshot.data ?? const [];
+                  if (analyses.isEmpty) {
+                    return const Center(
+                      child: Padding(padding: EdgeInsets.all(AppSpacing.lg), child: Text("まだ分析がありません。")),
+                    );
+                  }
+                  final scored = scoredInOrder(analyses);
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Expanded(
-                        child: FilledButton.icon(
-                          onPressed: _continuing ? null : () => _continueFromLatest(analyses),
-                          icon: _continuing
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                                )
-                              : const Icon(Icons.add_photo_alternate_outlined),
-                          label: const Text("続きのスクショで分析"),
+                      if (scored.length >= 2) _TrendSection(analyses: scored),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: FilledButton.icon(
+                                onPressed: _continuing ? null : () => _continueFromLatest(analyses),
+                                icon: _continuing
+                                    ? const SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                      )
+                                    : const Icon(Icons.add_photo_alternate_outlined),
+                                label: const Text("続きのスクショで分析"),
+                              ),
+                            ),
+                            const SizedBox(width: AppSpacing.sm),
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: () => Navigator.of(context).push(
+                                  MaterialPageRoute(builder: (_) => PersonThreadScreen(person: widget.person)),
+                                ),
+                                icon: const Icon(Icons.forum_outlined),
+                                label: const Text("全体の会話を見る"),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      const SizedBox(width: AppSpacing.sm),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () => Navigator.of(context).push(
-                            MaterialPageRoute(builder: (_) => PersonThreadScreen(person: widget.person)),
-                          ),
-                          icon: const Icon(Icons.forum_outlined),
-                          label: const Text("全体の会話を見る"),
-                        ),
-                      ),
+                      Expanded(child: _buildList(analyses)),
                     ],
-                  ),
-                ),
-                Expanded(child: _buildList(analyses)),
-              ],
-            );
-          },
+                  );
+                },
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -245,6 +254,89 @@ class _TrendSection extends StatelessWidget {
                   Text(_formatDate(analyses.first.createdAt), style: textTheme.bodySmall),
                   Text(_formatDate(analyses.last.createdAt), style: textTheme.bodySmall),
                 ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 相手単位の振り返りメモ(docs/requirements.md 3.3節「自分の反省メモ」、#21)。
+/// AIが生成する内容とは別に、利用者自身が書いた文章をそのまま保存する。
+class _MemoSection extends StatefulWidget {
+  final Person person;
+  final HistoryApiService api;
+
+  const _MemoSection({required this.person, required this.api});
+
+  @override
+  State<_MemoSection> createState() => _MemoSectionState();
+}
+
+class _MemoSectionState extends State<_MemoSection> {
+  late final TextEditingController _controller = TextEditingController(text: widget.person.memo);
+  bool _saving = false;
+  bool _dirty = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    try {
+      await widget.api.updatePersonMemo(widget.person.id, _controller.text.trim());
+      if (mounted) setState(() => _dirty = false);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e is HistoryApiException ? e.message : "保存に失敗しました。")),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.md),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text("自分のメモ", style: textTheme.titleMedium),
+              const SizedBox(height: AppSpacing.xs),
+              TextField(
+                controller: _controller,
+                maxLines: 3,
+                enabled: !_saving,
+                onChanged: (_) => setState(() => _dirty = true),
+                decoration: const InputDecoration(
+                  hintText: "振り返りを書き留める(例: 重い話題を早く振りすぎた)",
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton(
+                  onPressed: (_saving || !_dirty) ? null : _save,
+                  child: _saving
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Text("保存"),
+                ),
               ),
             ],
           ),

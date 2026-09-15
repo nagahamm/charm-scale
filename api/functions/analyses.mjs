@@ -4,6 +4,7 @@ import { AUTH_OK, getServiceClient, verifyUser } from "./persistence.mjs";
 // 書き込み(解析結果の保存)は analyse.mjs、Supabaseクライアント初期化は persistence.mjs が担う。
 
 const MAX_NICKNAME_LENGTH = 50;
+const MAX_MEMO_LENGTH = 1000;
 
 const METRIC_KEYS_CHAT = [
   "reply_speed",
@@ -24,7 +25,7 @@ const json = (status, body) =>
 const listPersons = async (client, userId) => {
   const { data, error } = await client
     .from("persons")
-    .select("id, nickname, created_at, analyses(id, headline, interest_score, phase, created_at)")
+    .select("id, nickname, memo, created_at, analyses(id, headline, interest_score, phase, created_at)")
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .order("created_at", { foreignTable: "analyses", ascending: false })
@@ -33,6 +34,7 @@ const listPersons = async (client, userId) => {
   return data.map((p) => ({
     id: p.id,
     nickname: p.nickname,
+    memo: p.memo,
     created_at: p.created_at,
     latest: p.analyses?.[0] ?? null,
   }));
@@ -42,7 +44,7 @@ const createPerson = async (client, userId, nickname) => {
   const { data, error } = await client
     .from("persons")
     .insert({ user_id: userId, nickname })
-    .select("id, nickname, created_at")
+    .select("id, nickname, memo, created_at")
     .single();
   if (error) throw error;
   return data;
@@ -51,6 +53,47 @@ const createPerson = async (client, userId, nickname) => {
 const deletePerson = async (client, userId, personId) => {
   const { error } = await client.from("persons").delete().eq("id", personId).eq("user_id", userId);
   if (error) throw error;
+};
+
+// docs/design.md 4.2節「利用者自身のメモ」(#21): Person単位の振り返りメモを更新する。
+const updatePersonMemo = async (client, userId, personId, memo) => {
+  const { data, error } = await client
+    .from("persons")
+    .update({ memo })
+    .eq("id", personId)
+    .eq("user_id", userId)
+    .select("id, nickname, memo, created_at")
+    .single();
+  if (error) throw error;
+  return data;
+};
+
+// entryId が該当ユーザーの Analysis に属する Timeline entry かどうかを確認する
+// (Service Role キーは RLS を無視するため、アプリケーション側で必ず絞り込む)。
+const ownsTimelineEntry = async (client, userId, entryId) => {
+  const { data, error } = await client
+    .from("analysis_timeline_entries")
+    .select("id, analyses!inner(user_id)")
+    .eq("id", entryId)
+    .eq("analyses.user_id", userId)
+    .maybeSingle();
+  if (error) throw error;
+  return !!data;
+};
+
+// メッセージ(timeline_entry)単位の利用者メモを upsert する。空文字は未記入に戻す(行を削除する)。
+const setMessageNote = async (client, userId, entryId, note) => {
+  if (!(await ownsTimelineEntry(client, userId, entryId))) return false;
+  if (note === "") {
+    const { error } = await client.from("timeline_entry_notes").delete().eq("timeline_entry_id", entryId);
+    if (error) throw error;
+    return true;
+  }
+  const { error } = await client
+    .from("timeline_entry_notes")
+    .upsert({ timeline_entry_id: entryId, note, updated_at: new Date().toISOString() });
+  if (error) throw error;
+  return true;
 };
 
 const listAnalyses = async (client, userId, personId) => {
@@ -78,7 +121,7 @@ const buildChatDetail = async (client, userId, analysisId) => {
   if (analysisError) throw analysisError;
   if (!analysis || analysis.mode !== "chat") return null;
 
-  const [metrics, timeline, rewrites, nextMoves, profile] = await Promise.all([
+  const [metrics, timeline, rewrites, nextMoves, profile, notes] = await Promise.all([
     client.from("analysis_metrics").select("key, score, comment").eq("analysis_id", analysisId),
     client
       .from("analysis_timeline_entries")
@@ -95,8 +138,12 @@ const buildChatDetail = async (client, userId, analysisId) => {
       .select("reported_age, reported_occupation, likes_count, bio_summary, notes, attributes, tags, talking_points")
       .eq("analysis_id", analysisId)
       .maybeSingle(),
+    client
+      .from("timeline_entry_notes")
+      .select("timeline_entry_id, note, analysis_timeline_entries!inner(analysis_id)")
+      .eq("analysis_timeline_entries.analysis_id", analysisId),
   ]);
-  for (const result of [metrics, timeline, rewrites, nextMoves, profile]) {
+  for (const result of [metrics, timeline, rewrites, nextMoves, profile, notes]) {
     if (result.error) throw result.error;
   }
 
@@ -107,11 +154,14 @@ const buildChatDetail = async (client, userId, analysisId) => {
   }
 
   const rewriteByTimelineId = new Map(rewrites.data.map((r) => [r.timeline_entry_id, r]));
+  const userNoteByTimelineId = new Map(notes.data.map((n) => [n.timeline_entry_id, n.note]));
   const timelineEntries = timeline.data.map((entry) => ({
+    id: entry.id,
     speaker: entry.speaker,
     excerpt: entry.excerpt,
     interest: entry.interest,
     note: entry.note,
+    user_note: userNoteByTimelineId.get(entry.id) ?? null,
     rewrite: toRewrite(rewriteByTimelineId.get(entry.id)),
   }));
 
@@ -140,9 +190,34 @@ const buildChatDetail = async (client, userId, analysisId) => {
   };
 };
 
-// docs/design.md 4.2節「相手ごとの通し会話」(#20): その Person の chat Analysis すべての
-// timeline を analyses.created_at 昇順→position 昇順で連結する。next_moves・profile・metrics 等
-// 単一の Analysis に紐づく情報はここでは組み立てない(それらは resource=detail の責務)。
+// docs/design.md 4.2節「相手ごとの通し会話」(#20): analyses.created_at 昇順で並んだ analysisIds に
+// 沿って、各 Analysis の timeline を position 昇順で連結する。行データだけを受け取る純粋関数として
+// 切り出し、Supabaseクライアント無しでテストできるようにする(aggregateOverviewと同じ方針)。
+export const mergeThreadTimeline = (analysisIds, timelineRows, rewriteRows, noteRows) => {
+  const rewriteByTimelineId = new Map(rewriteRows.map((r) => [r.timeline_entry_id, r]));
+  const userNoteByTimelineId = new Map(noteRows.map((n) => [n.timeline_entry_id, n.note]));
+  const entriesByAnalysis = new Map();
+  for (const entry of timelineRows) {
+    const list = entriesByAnalysis.get(entry.analysis_id) ?? [];
+    list.push(entry);
+    entriesByAnalysis.set(entry.analysis_id, list);
+  }
+
+  return analysisIds.flatMap((analysisId) =>
+    (entriesByAnalysis.get(analysisId) ?? [])
+      .sort((a, b) => a.position - b.position)
+      .map((entry) => ({
+        id: entry.id,
+        speaker: entry.speaker,
+        excerpt: entry.excerpt,
+        interest: entry.interest,
+        note: entry.note,
+        user_note: userNoteByTimelineId.get(entry.id) ?? null,
+        rewrite: toRewrite(rewriteByTimelineId.get(entry.id)),
+      }))
+  );
+};
+
 const buildThread = async (client, userId, personId) => {
   const { data: analyses, error: analysesError } = await client
     .from("analyses")
@@ -155,7 +230,7 @@ const buildThread = async (client, userId, personId) => {
   if (analyses.length === 0) return { timeline: [] };
 
   const analysisIds = analyses.map((a) => a.id);
-  const [timelineRes, rewritesRes] = await Promise.all([
+  const [timelineRes, rewritesRes, notesRes] = await Promise.all([
     client
       .from("analysis_timeline_entries")
       .select("id, analysis_id, position, speaker, excerpt, interest, note")
@@ -164,30 +239,16 @@ const buildThread = async (client, userId, personId) => {
       .from("analysis_rewrites")
       .select("timeline_entry_id, issue, improved_candidates, reason")
       .in("analysis_id", analysisIds),
+    client
+      .from("timeline_entry_notes")
+      .select("timeline_entry_id, note, analysis_timeline_entries!inner(analysis_id)")
+      .in("analysis_timeline_entries.analysis_id", analysisIds),
   ]);
   if (timelineRes.error) throw timelineRes.error;
   if (rewritesRes.error) throw rewritesRes.error;
+  if (notesRes.error) throw notesRes.error;
 
-  const rewriteByTimelineId = new Map(rewritesRes.data.map((r) => [r.timeline_entry_id, r]));
-  const entriesByAnalysis = new Map();
-  for (const entry of timelineRes.data) {
-    const list = entriesByAnalysis.get(entry.analysis_id) ?? [];
-    list.push(entry);
-    entriesByAnalysis.set(entry.analysis_id, list);
-  }
-
-  const timeline = analysisIds.flatMap((analysisId) =>
-    (entriesByAnalysis.get(analysisId) ?? [])
-      .sort((a, b) => a.position - b.position)
-      .map((entry) => ({
-        speaker: entry.speaker,
-        excerpt: entry.excerpt,
-        interest: entry.interest,
-        note: entry.note,
-        rewrite: toRewrite(rewriteByTimelineId.get(entry.id)),
-      }))
-  );
-
+  const timeline = mergeThreadTimeline(analysisIds, timelineRes.data, rewritesRes.data, notesRes.data);
   return { timeline };
 };
 
@@ -268,6 +329,42 @@ export default async (req) => {
         return json(400, { error: `ニックネームは${MAX_NICKNAME_LENGTH}文字以内にしてください。` });
       }
       return json(200, await createPerson(client, auth.userId, nickname));
+    }
+
+    if (req.method === "PATCH" && resource === "persons") {
+      const personId = url.searchParams.get("person_id");
+      if (!personId) return json(400, { error: "person_id が指定されていません。" });
+      let body;
+      try {
+        body = await req.json();
+      } catch {
+        return json(400, { error: "リクエストの形式が不正です。" });
+      }
+      const memo = typeof body?.memo === "string" ? body.memo : null;
+      if (memo === null) return json(400, { error: "memo を指定してください。" });
+      if (memo.length > MAX_MEMO_LENGTH) {
+        return json(400, { error: `メモは${MAX_MEMO_LENGTH}文字以内にしてください。` });
+      }
+      return json(200, await updatePersonMemo(client, auth.userId, personId, memo));
+    }
+
+    if (req.method === "PATCH" && resource === "message_note") {
+      const entryId = url.searchParams.get("entry_id");
+      if (!entryId) return json(400, { error: "entry_id が指定されていません。" });
+      let body;
+      try {
+        body = await req.json();
+      } catch {
+        return json(400, { error: "リクエストの形式が不正です。" });
+      }
+      const note = typeof body?.note === "string" ? body.note.trim() : null;
+      if (note === null) return json(400, { error: "note を指定してください。" });
+      if (note.length > MAX_MEMO_LENGTH) {
+        return json(400, { error: `メモは${MAX_MEMO_LENGTH}文字以内にしてください。` });
+      }
+      const ok = await setMessageNote(client, auth.userId, entryId, note);
+      if (!ok) return json(404, { error: "見つかりませんでした。" });
+      return json(200, { ok: true, note: note === "" ? null : note });
     }
 
     if (req.method === "DELETE" && resource === "persons") {

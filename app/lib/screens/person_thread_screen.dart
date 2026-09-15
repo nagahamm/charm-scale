@@ -69,7 +69,8 @@ class _PersonThreadScreenState extends State<PersonThreadScreen> {
                     style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
                   ),
                 ),
-                for (final entry in timeline) MessageBubble(entry: entry),
+                for (final entry in timeline)
+                  MessageBubble(entry: entry, onSaveNote: _api.updateMessageNote),
               ],
             );
           },

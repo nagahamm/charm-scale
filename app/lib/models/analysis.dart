@@ -115,25 +115,31 @@ class MessageCritique {
 }
 
 class TimelineEntry {
+  final String? id;
   final Speaker speaker;
   final String excerpt;
   final int interest;
   final String note;
+  final String? userNote;
   final MessageCritique? rewrite;
 
   const TimelineEntry({
+    required this.id,
     required this.speaker,
     required this.excerpt,
     required this.interest,
     required this.note,
+    required this.userNote,
     required this.rewrite,
   });
 
   factory TimelineEntry.fromJson(Map<String, dynamic> json) => TimelineEntry(
+        id: json["id"] as String?,
         speaker: json["speaker"] == "self" ? Speaker.self_ : Speaker.partner,
         excerpt: json["excerpt"] as String,
         interest: json["interest"] as int,
         note: json["note"] as String,
+        userNote: json["user_note"] as String?,
         rewrite: json["rewrite"] == null
             ? null
             : MessageCritique.fromJson(json["rewrite"] as Map<String, dynamic>),

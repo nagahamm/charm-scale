@@ -3,6 +3,7 @@ import "package:flutter/services.dart";
 
 import "../models/analysis.dart";
 import "../services/analysis_api.dart";
+import "../services/history_api.dart";
 import "../services/image_prep.dart";
 import "../theme.dart";
 import "../widgets/candidate_card.dart";
@@ -21,12 +22,14 @@ class ChatThreadScreen extends StatefulWidget {
 
 class _ChatThreadScreenState extends State<ChatThreadScreen> {
   final _draftController = TextEditingController();
+  final _historyApi = HistoryApiService();
   DraftCheckResult? _checkResult;
   bool _checking = false;
 
   @override
   void dispose() {
     _draftController.dispose();
+    _historyApi.dispose();
     super.dispose();
   }
 
@@ -77,7 +80,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                   style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
                 ),
               ),
-              for (final entry in result.timeline) MessageBubble(entry: entry),
+              for (final entry in result.timeline)
+                MessageBubble(entry: entry, onSaveNote: _historyApi.updateMessageNote),
             ],
             if (result.nextMoves.isNotEmpty) ...[
               Padding(

@@ -40,6 +40,59 @@ void main() {
 
       expect(person.latest, isNull);
     });
+
+    test("memo defaults to empty string when absent", () {
+      final json = {"id": "p3", "nickname": "Cさん", "created_at": "2026-08-01T00:00:00Z", "latest": null};
+
+      expect(Person.fromJson(json).memo, "");
+    });
+
+    test("parses a saved memo", () {
+      final json = {
+        "id": "p4",
+        "nickname": "Dさん",
+        "memo": "重い話題を早く振りすぎた",
+        "created_at": "2026-08-01T00:00:00Z",
+        "latest": null,
+      };
+
+      expect(Person.fromJson(json).memo, "重い話題を早く振りすぎた");
+    });
+  });
+
+  group("PersonThread.fromJson", () {
+    test("parses a merged timeline with entry ids and user notes", () {
+      final json = {
+        "timeline": [
+          {
+            "id": "e1",
+            "speaker": "self",
+            "excerpt": "はじめまして",
+            "interest": 60,
+            "note": "note1",
+            "user_note": "このメッセージは失敗だった",
+            "rewrite": null,
+          },
+          {
+            "id": "e2",
+            "speaker": "partner",
+            "excerpt": "こんにちは",
+            "interest": 65,
+            "note": "note2",
+            "user_note": null,
+            "rewrite": null,
+          },
+        ],
+      };
+
+      final thread = PersonThread.fromJson(json);
+
+      expect(thread.timeline, hasLength(2));
+      expect(thread.timeline.first.id, "e1");
+      expect(thread.timeline.first.userNote, "このメッセージは失敗だった");
+      expect(thread.timeline.last.id, "e2");
+      expect(thread.timeline.last.userNote, isNull);
+    });
   });
 
   group("AnalysisSummary.fromJson", () {

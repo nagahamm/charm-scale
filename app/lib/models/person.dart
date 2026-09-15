@@ -30,12 +30,14 @@ class AnalysisSummary {
 class Person {
   final String id;
   final String nickname;
+  final String memo;
   final DateTime createdAt;
   final AnalysisSummary? latest;
 
   const Person({
     required this.id,
     required this.nickname,
+    required this.memo,
     required this.createdAt,
     required this.latest,
   });
@@ -43,6 +45,7 @@ class Person {
   factory Person.fromJson(Map<String, dynamic> json) => Person(
         id: json["id"] as String,
         nickname: json["nickname"] as String,
+        memo: json["memo"] as String? ?? "",
         createdAt: DateTime.parse(json["created_at"] as String),
         latest: json["latest"] == null
             ? null

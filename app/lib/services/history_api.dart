@@ -66,6 +66,26 @@ class HistoryApiService {
         (_) {},
       );
 
+  /// 相手単位の振り返りメモを更新する(docs/requirements.md 3.3節「自分の反省メモ」、#21)。
+  Future<Person> updatePersonMemo(String personId, String memo) => _send(
+        () => _client.patch(
+          _uri("persons", {"person_id": personId}),
+          headers: _headers(),
+          body: jsonEncode({"memo": memo}),
+        ),
+        (body) => Person.fromJson(body as Map<String, dynamic>),
+      );
+
+  /// メッセージ(Timeline entry)単位の振り返りメモを更新する。空文字は未記入に戻す。
+  Future<void> updateMessageNote(String entryId, String note) => _send(
+        () => _client.patch(
+          _uri("message_note", {"entry_id": entryId}),
+          headers: _headers(),
+          body: jsonEncode({"note": note}),
+        ),
+        (_) {},
+      );
+
   Future<List<AnalysisSummary>> fetchAnalyses(String personId) => _send(
         () => _client.get(_uri("list", {"person_id": personId}), headers: _headers()),
         (body) => ((body as Map<String, dynamic>)["analyses"] as List)
