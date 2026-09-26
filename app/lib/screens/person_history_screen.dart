@@ -1,15 +1,14 @@
 import "package:flutter/material.dart";
 
-import "../models/analysis.dart";
 import "../models/person.dart";
 import "../services/history_api.dart";
 import "../theme.dart";
 import "../widgets/trend_chart.dart";
 import "home_screen.dart";
 import "person_thread_screen.dart";
-import "result_screen.dart";
 
-/// 特定の Person(相手)の分析履歴一覧(docs/requirements.md 4.2節)。
+/// 特定の Person(相手)の履歴画面(docs/requirements.md 3.3節)。
+/// 個別の分析結果を読み返す手段は無く、通し会話(#22)に一本化している。
 class PersonHistoryScreen extends StatefulWidget {
   final Person person;
   const PersonHistoryScreen({super.key, required this.person});
@@ -21,7 +20,6 @@ class PersonHistoryScreen extends StatefulWidget {
 class _PersonHistoryScreenState extends State<PersonHistoryScreen> {
   final _api = HistoryApiService();
   late Future<List<AnalysisSummary>> _future;
-  String? _openingId;
   bool _continuing = false;
 
   @override
@@ -34,26 +32,6 @@ class _PersonHistoryScreenState extends State<PersonHistoryScreen> {
   void dispose() {
     _api.dispose();
     super.dispose();
-  }
-
-  Future<void> _open(AnalysisSummary summary) async {
-    setState(() => _openingId = summary.id);
-    try {
-      final result = await _api.fetchChatDetail(summary.id);
-      if (!mounted) return;
-      await Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => ResultScreen(mode: AnalysisMode.chat, result: result, images: const []),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e is HistoryApiException ? e.message : "読み込みに失敗しました。")),
-      );
-    } finally {
-      if (mounted) setState(() => _openingId = null);
-    }
   }
 
   /// 直前の分析の要約を引き継いで、続きのスクショで分析する(docs/requirements.md 3.3節)。
@@ -115,41 +93,30 @@ class _PersonHistoryScreenState extends State<PersonHistoryScreen> {
                     );
                   }
                   final scored = scoredInOrder(analyses);
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                  return ListView(
+                    padding: const EdgeInsets.all(AppSpacing.md),
                     children: [
-                      if (scored.length >= 2) _TrendSection(analyses: scored),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: FilledButton.icon(
-                                onPressed: _continuing ? null : () => _continueFromLatest(analyses),
-                                icon: _continuing
-                                    ? const SizedBox(
-                                        width: 16,
-                                        height: 16,
-                                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                                      )
-                                    : const Icon(Icons.add_photo_alternate_outlined),
-                                label: const Text("続きのスクショで分析"),
-                              ),
-                            ),
-                            const SizedBox(width: AppSpacing.sm),
-                            Expanded(
-                              child: OutlinedButton.icon(
-                                onPressed: () => Navigator.of(context).push(
-                                  MaterialPageRoute(builder: (_) => PersonThreadScreen(person: widget.person)),
-                                ),
-                                icon: const Icon(Icons.forum_outlined),
-                                label: const Text("全体の会話を見る"),
-                              ),
-                            ),
-                          ],
+                      _ViewConversationButton(
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => PersonThreadScreen(person: widget.person)),
                         ),
                       ),
-                      Expanded(child: _buildList(analyses)),
+                      if (scored.length >= 2) ...[
+                        const SizedBox(height: AppSpacing.md),
+                        _TrendSection(analyses: scored),
+                      ],
+                      const SizedBox(height: AppSpacing.md),
+                      FilledButton.icon(
+                        onPressed: _continuing ? null : () => _continueFromLatest(analyses),
+                        icon: _continuing
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              )
+                            : const Icon(Icons.add_photo_alternate_outlined),
+                        label: const Text("続きのスクショで分析"),
+                      ),
                     ],
                   );
                 },
@@ -160,61 +127,49 @@ class _PersonHistoryScreenState extends State<PersonHistoryScreen> {
       ),
     );
   }
+}
 
-  Widget _buildList(List<AnalysisSummary> analyses) {
+/// 会話を見る(#20の通し会話への入口)。埋もれないよう、履歴画面の主要な導線として
+/// 大きく表示する(docs/requirements.md 3.3節「会話を見る導線をすぐ見つけられる」、#22)。
+class _ViewConversationButton extends StatelessWidget {
+  final VoidCallback onTap;
+  const _ViewConversationButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-    return ListView.separated(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      itemCount: analyses.length,
-      separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.sm),
-      itemBuilder: (context, index) {
-        final summary = analyses[index];
-        final loading = _openingId == summary.id;
-        return Card(
-          child: InkWell(
-            borderRadius: BorderRadius.circular(AppSpacing.radius),
-            onTap: loading ? null : () => _open(summary),
-            child: Padding(
-              padding: const EdgeInsets.all(AppSpacing.md),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            if (summary.interestScore != null)
-                              Text(
-                                "${summary.interestScore}",
-                                style: textTheme.titleMedium?.copyWith(
-                                  color: AppColors.forScore(summary.interestScore!),
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            if (summary.phase != null) ...[
-                              const SizedBox(width: AppSpacing.sm),
-                              Chip(label: Text(summary.phase!), visualDensity: VisualDensity.compact),
-                            ],
-                          ],
-                        ),
-                        const SizedBox(height: 2),
-                        Text(summary.headline, style: textTheme.bodyMedium),
-                        const SizedBox(height: 2),
-                        Text(_formatDate(summary.createdAt), style: textTheme.bodySmall),
-                      ],
+    return Card(
+      color: AppColors.primary,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppSpacing.radius),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.md),
+          child: Row(
+            children: [
+              const Icon(Icons.forum, color: Colors.white, size: 28),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "会話を見る",
+                      style: textTheme.titleMedium?.copyWith(color: Colors.white, fontWeight: FontWeight.bold),
                     ),
-                  ),
-                  if (loading)
-                    const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                  else
-                    const Icon(Icons.chevron_right, color: AppColors.textSecondary),
-                ],
+                    const SizedBox(height: 2),
+                    Text(
+                      "これまでのやり取りをまとめて振り返る",
+                      style: textTheme.bodySmall?.copyWith(color: Colors.white70),
+                    ),
+                  ],
+                ),
               ),
-            ),
+              const Icon(Icons.chevron_right, color: Colors.white),
+            ],
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 }
@@ -238,25 +193,22 @@ class _TrendSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.md),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text("食いつき度数の推移", style: textTheme.titleMedium),
-              TrendChart(values: [for (final a in analyses) a.interestScore!]),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(_formatDate(analyses.first.createdAt), style: textTheme.bodySmall),
-                  Text(_formatDate(analyses.last.createdAt), style: textTheme.bodySmall),
-                ],
-              ),
-            ],
-          ),
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text("食いつき度数の推移", style: textTheme.titleMedium),
+            TrendChart(values: [for (final a in analyses) a.interestScore!]),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(_formatDate(analyses.first.createdAt), style: textTheme.bodySmall),
+                Text(_formatDate(analyses.last.createdAt), style: textTheme.bodySmall),
+              ],
+            ),
+          ],
         ),
       ),
     );
